@@ -1,0 +1,37 @@
+# FastAPI & Server
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Data Validation
+pydantic
+pydantic-settings
+
+# HTTP Client (async)
+httpx
+
+# Data Processing
+pandas
+openpyxl
+python-dateutil
+
+# Database (optional - for caching)
+sqlalchemy
+asyncpg
+
+# Cache & Scheduling
+redis
+apscheduler
+
+# Authentication
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Testing
+pytest
+pytest-asyncio
+pytest-cov
+httpx
+
+# Development
+python-dotenv

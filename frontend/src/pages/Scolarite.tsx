@@ -1,0 +1,306 @@
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { GraduationCap, TrendingUp, AlertCircle } from 'lucide-react'
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend, LineChart, Line, LabelList
+} from 'recharts'
+import StatCard from '@/components/StatCard'
+import ChartContainer from '@/components/ChartContainer'
+import DataTable from '@/components/DataTable'
+import ProgressBar from '@/components/ProgressBar'
+import FilterBar, { FilterConfig, FilterValues, YearSelector, PeriodSelector } from '@/components/FilterBar'
+import { scolariteApi } from '@/services/api'
+import type { ModuleStats } from '@/types'
+
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+
+// Filter configuration
+const filterConfigs: FilterConfig[] = [
+  {
+    key: 'formation',
+    label: 'Formation',
+    type: 'select',
+    options: [
+      { value: 'BUT RT', label: 'BUT RT' },
+      { value: 'LP Cyber', label: 'LP Cybersécurité' },
+      { value: 'LP Admin', label: 'LP Admin Systèmes' },
+    ]
+  },
+  {
+    key: 'semestre',
+    label: 'Semestre',
+    type: 'multiselect',
+    options: [
+      { value: 'S1', label: 'Semestre 1' },
+      { value: 'S2', label: 'Semestre 2' },
+      { value: 'S3', label: 'Semestre 3' },
+      { value: 'S4', label: 'Semestre 4' },
+      { value: 'S5', label: 'Semestre 5' },
+      { value: 'S6', label: 'Semestre 6' },
+    ]
+  },
+  {
+    key: 'search',
+    label: 'Recherche',
+    type: 'search',
+    placeholder: 'Nom, module...'
+  }
+]
+
+export default function Scolarite() {
+  const [filters, setFilters] = useState<FilterValues>({})
+  const [year, setYear] = useState<string>('')
+  const [period, setPeriod] = useState<string>('current')
+
+  const { data: indicators, isLoading } = useQuery({
+    queryKey: ['scolarite', 'indicators', year],
+    queryFn: () => scolariteApi.getIndicators(),
+  })
+
+  const { data: effectifs } = useQuery({
+    queryKey: ['scolarite', 'effectifs'],
+    queryFn: scolariteApi.getEffectifs,
+  })
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-64">Chargement...</div>
+  }
+
+  // Prepare chart data - extract short semester name (e.g., "S1", "S3 App")
+  const semestreData = indicators?.etudiants_par_semestre
+    ? Object.entries(indicators.etudiants_par_semestre).map(([sem, count]) => {
+        // Extract semester number from full name like "BUT Réseaux et Télécommunications semestre 1"
+        const match = sem.match(/semestre\s*(\d+)/i)
+        const semNum = match ? match[1] : '?'
+        const isApprentissage = sem.toLowerCase().includes('apprentissage')
+        const shortName = isApprentissage ? `S${semNum} App` : `S${semNum}`
+        return {
+          semestre: shortName,
+          fullName: sem,
+          etudiants: count
+        }
+      })
+    : []
+
+  const formationData = indicators?.etudiants_par_formation
+    ? Object.entries(indicators.etudiants_par_formation).map(([name, value]) => ({
+        name,
+        value
+      }))
+    : []
+
+  const evolutionData = effectifs?.evolution
+    ? Object.entries(effectifs.evolution).map(([year, count]) => ({
+        annee: year,
+        effectif: count
+      }))
+    : []
+
+  const moduleColumns = [
+    { key: 'code', header: 'Code' },
+    { key: 'nom', header: 'Module' },
+    { 
+      key: 'moyenne', 
+      header: 'Moyenne',
+      align: 'right' as const,
+      render: (item: ModuleStats) => item.moyenne.toFixed(2)
+    },
+    {
+      key: 'taux_reussite',
+      header: 'Réussite',
+      align: 'right' as const,
+      render: (item: ModuleStats) => (
+        <span className={item.taux_reussite >= 70 ? 'text-green-600' : 'text-orange-600'}>
+          {item.taux_reussite.toFixed(0)}%
+        </span>
+      )
+    },
+    { 
+      key: 'nb_etudiants', 
+      header: 'Étudiants',
+      align: 'right' as const
+    },
+  ]
+
+  // Apply filters to modules
+  const filteredModules = indicators?.modules_stats.filter((mod: ModuleStats) => {
+    if (filters.search && typeof filters.search === 'string') {
+      const search = filters.search.toLowerCase()
+      if (!mod.code.toLowerCase().includes(search) && !mod.nom.toLowerCase().includes(search)) {
+        return false
+      }
+    }
+    if (filters.semestre && Array.isArray(filters.semestre) && filters.semestre.length > 0) {
+      const semNum = mod.code.charAt(1) // R1xxx -> 1 = S1, S2
+      if (!filters.semestre.some(s => s.includes(semNum))) {
+        return false
+      }
+    }
+    return true
+  }) ?? []
+
+  return (
+    <div className="space-y-6">
+      {/* Page header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Scolarité</h1>
+          <p className="text-gray-500 mt-1">Indicateurs de la vie étudiante et résultats académiques</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <YearSelector value={year} onChange={setYear} />
+          <PeriodSelector value={period} onChange={setPeriod} />
+        </div>
+      </div>
+
+      {/* Filters */}
+      <FilterBar 
+        filters={filterConfigs}
+        values={filters}
+        onChange={setFilters}
+      />
+
+      {/* Stats overview */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Total étudiants"
+          value={indicators?.total_etudiants ?? 0}
+          icon={<GraduationCap className="w-6 h-6" />}
+          color="blue"
+        />
+        <StatCard
+          title="Moyenne générale"
+          value={indicators?.moyenne_generale.toFixed(2) ?? '-'}
+          subtitle="Tous modules confondus"
+          icon={<TrendingUp className="w-6 h-6" />}
+          color="green"
+        />
+        <StatCard
+          title="Taux de réussite"
+          value={`${(indicators?.taux_reussite_global ?? 0).toFixed(1)}%`}
+          subtitle="Global"
+          color="blue"
+        />
+        <StatCard
+          title="Taux d'absentéisme"
+          value={`${(indicators?.taux_absenteisme ?? 0).toFixed(1)}%`}
+          icon={<AlertCircle className="w-6 h-6" />}
+          color="yellow"
+        />
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ChartContainer
+          title="Effectifs par semestre"
+          subtitle="Distribution des étudiants"
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={semestreData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="semestre" stroke="#6b7280" fontSize={12} />
+              <YAxis stroke="#6b7280" fontSize={12} />
+              <Tooltip 
+                formatter={(value: number) => [`${value} étudiants`, 'Effectif']}
+                labelFormatter={(label) => semestreData.find(d => d.semestre === label)?.fullName || label}
+              />
+              <Bar dataKey="etudiants" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="etudiants" position="top" fill="#374151" fontSize={12} fontWeight={600} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartContainer>
+
+        <ChartContainer
+          title="Répartition par formation"
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={formationData}
+                cx="50%"
+                cy="50%"
+                innerRadius={50}
+                outerRadius={90}
+                paddingAngle={2}
+                dataKey="value"
+              >
+                {formationData.map((_, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Legend />
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartContainer>
+      </div>
+
+      {/* Evolution chart */}
+      <ChartContainer
+        title="Évolution des effectifs"
+        subtitle="Sur les dernières années"
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={evolutionData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis dataKey="annee" stroke="#6b7280" fontSize={12} />
+            <YAxis stroke="#6b7280" fontSize={12} />
+            <Tooltip />
+            <Line 
+              type="monotone" 
+              dataKey="effectif" 
+              stroke="#3b82f6" 
+              strokeWidth={2}
+              dot={{ fill: '#3b82f6' }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartContainer>
+
+      {/* Semestres stats */}
+      <div className="card">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Résultats par semestre</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {indicators?.semestres_stats.map((sem: { code: string; nom: string; annee: string; nb_etudiants: number; moyenne: number; taux_reussite: number }, index: number) => {
+            const isApprentissage = sem.nom.toLowerCase().includes('apprentissage')
+            const shortName = isApprentissage ? `${sem.code} Apprentissage` : sem.code
+            return (
+            <div key={`${sem.code}-${index}`} className="p-4 bg-gray-50 rounded-lg">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <h4 className="font-semibold text-gray-900">{shortName}</h4>
+                  <p className="text-sm text-gray-500">{sem.annee}</p>
+                </div>
+                <span className="text-sm bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                  {sem.nb_etudiants} étudiants
+                </span>
+              </div>
+              <div className="space-y-2">
+                <ProgressBar 
+                  value={sem.taux_reussite} 
+                  label="Réussite" 
+                  color={sem.taux_reussite >= 70 ? 'green' : 'yellow'}
+                />
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Moyenne</span>
+                  <span className="font-medium">{sem.moyenne.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          )})}
+        </div>
+      </div>
+
+      {/* Modules table */}
+      <div className="card">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Résultats par module</h3>
+        <DataTable 
+          data={filteredModules}
+          columns={moduleColumns}
+        />
+      </div>
+    </div>
+  )
+}

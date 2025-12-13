@@ -1,0 +1,53 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - SCODOC_BASE_URL=${SCODOC_BASE_URL}
+      - SCODOC_USERNAME=${SCODOC_USERNAME}
+      - SCODOC_PASSWORD=${SCODOC_PASSWORD}
+      - SCODOC_DEPARTMENT=${SCODOC_DEPARTMENT}
+      - SECRET_KEY=${SECRET_KEY}
+      - REDIS_URL=redis://redis:6379
+      - CACHE_ENABLED=true
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
+  # Optional: PostgreSQL for data caching
+  # db:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     POSTGRES_USER: dashboard
+  #     POSTGRES_PASSWORD: dashboard_secret
+  #     POSTGRES_DB: dept_dashboard
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+volumes:
+  redis_data:
