@@ -1,9 +1,13 @@
-"""Administration API routes."""
+"""Administration API routes with database persistence."""
 
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, Depends
 from typing import Optional
 from datetime import datetime
 import uuid
+
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.crud import admin_crud
 
 from app.models.admin import (
     DataSourceConfig,
@@ -24,61 +28,9 @@ from app.config import get_settings
 router = APIRouter()
 settings = get_settings()
 
-# In-memory storage for demo (use database in production)
-_data_sources: dict[str, DataSourceConfig] = {}
-_system_settings = SystemSettings()
+# In-memory storage for logs and sync results (ephemeral data)
 _activity_logs: list[ActivityLog] = []
 _sync_results: list[SyncResult] = []
-
-
-def _init_default_sources():
-    """Initialize default data sources."""
-    if not _data_sources:
-        defaults = [
-            DataSourceConfig(
-                id="scodoc-1",
-                name="ScoDoc Principal",
-                type=DataSourceType.SCODOC,
-                status=DataSourceStatus.ACTIVE,
-                description="API ScoDoc pour les données de scolarité",
-                base_url=settings.scodoc_base_url,
-                enabled=True,
-                auto_sync=True,
-                sync_interval_hours=1,
-            ),
-            DataSourceConfig(
-                id="parcoursup-1",
-                name="Parcoursup",
-                type=DataSourceType.PARCOURSUP,
-                status=DataSourceStatus.ACTIVE,
-                description="Import des fichiers CSV Parcoursup",
-                enabled=True,
-                auto_sync=False,
-            ),
-            DataSourceConfig(
-                id="excel-budget",
-                name="Budget Excel",
-                type=DataSourceType.EXCEL,
-                status=DataSourceStatus.ACTIVE,
-                description="Fichiers Excel pour le suivi budgétaire",
-                enabled=True,
-                auto_sync=False,
-            ),
-            DataSourceConfig(
-                id="excel-edt",
-                name="EDT Excel",
-                type=DataSourceType.EXCEL,
-                status=DataSourceStatus.ACTIVE,
-                description="Fichiers Excel pour les emplois du temps",
-                enabled=True,
-                auto_sync=False,
-            ),
-        ]
-        for source in defaults:
-            _data_sources[source.id] = source
-
-
-_init_default_sources()
 
 
 def _add_log(action: str, details: str = None, status: str = "info", source: str = None):
@@ -104,12 +56,15 @@ def _add_log(action: str, details: str = None, status: str = "info", source: str
     response_model=AdminDashboard,
     summary="Vue d'ensemble administration",
 )
-async def get_admin_dashboard():
+async def get_admin_dashboard(db: Session = Depends(get_db)):
     """
     Récupère la vue d'ensemble de l'administration.
     
     Inclut les statistiques des sources, du cache et des jobs.
     """
+    # Get sources from DB
+    sources = admin_crud.get_all_sources(db)
+    
     cache_stats_raw = await cache.get_stats()
     cache_stats = CacheStats(
         connected=cache_stats_raw.get("connected", False),
@@ -126,9 +81,9 @@ async def get_admin_dashboard():
     jobs = scheduler.get_jobs() if settings.cache_enabled else []
     
     return AdminDashboard(
-        total_sources=len(_data_sources),
-        active_sources=sum(1 for s in _data_sources.values() if s.status == DataSourceStatus.ACTIVE),
-        sources_in_error=sum(1 for s in _data_sources.values() if s.status == DataSourceStatus.ERROR),
+        total_sources=len(sources),
+        active_sources=sum(1 for s in sources if s.status == "active"),
+        sources_in_error=sum(1 for s in sources if s.status == "error"),
         cache_stats=cache_stats,
         scheduled_jobs=len(jobs),
         jobs_running=0,
@@ -141,97 +96,97 @@ async def get_admin_dashboard():
 
 @router.get(
     "/sources",
-    response_model=list[DataSourceConfig],
     summary="Liste des sources de données",
 )
 async def list_data_sources(
-    type: Optional[DataSourceType] = Query(None, description="Filtrer par type"),
+    type: Optional[str] = Query(None, description="Filtrer par type"),
     enabled: Optional[bool] = Query(None, description="Filtrer par statut actif"),
+    db: Session = Depends(get_db),
 ):
     """Récupère la liste des sources de données configurées."""
-    sources = list(_data_sources.values())
-    
-    if type:
-        sources = [s for s in sources if s.type == type]
-    if enabled is not None:
-        sources = [s for s in sources if s.enabled == enabled]
-    
-    return sources
+    sources = admin_crud.get_all_sources(db, source_type=type, enabled=enabled)
+    return [admin_crud.source_to_dict(s) for s in sources]
 
 
 @router.get(
     "/sources/{source_id}",
-    response_model=DataSourceConfig,
     summary="Détails d'une source",
 )
-async def get_data_source(source_id: str):
+async def get_data_source(source_id: str, db: Session = Depends(get_db)):
     """Récupère les détails d'une source de données."""
-    if source_id not in _data_sources:
+    source = admin_crud.get_source(db, source_id)
+    if not source:
         raise HTTPException(status_code=404, detail="Source non trouvée")
-    return _data_sources[source_id]
+    return admin_crud.source_to_dict(source)
 
 
 @router.post(
     "/sources",
-    response_model=DataSourceConfig,
     summary="Créer une source",
 )
-async def create_data_source(data: DataSourceCreate):
+async def create_data_source(data: DataSourceCreate, db: Session = Depends(get_db)):
     """Crée une nouvelle source de données."""
     source_id = f"{data.type.value}-{uuid.uuid4().hex[:8]}"
     
-    source = DataSourceConfig(
-        id=source_id,
-        name=data.name,
-        type=data.type,
-        status=DataSourceStatus.CONFIGURING,
-        description=data.description,
-        base_url=data.base_url,
-        username=data.username,
-        enabled=data.enabled,
-        auto_sync=data.auto_sync,
-        sync_interval_hours=data.sync_interval_hours,
-    )
+    source_data = {
+        "source_id": source_id,
+        "name": data.name,
+        "type": data.type.value,
+        "status": "configuring",
+        "description": data.description,
+        "base_url": data.base_url,
+        "username": data.username,
+        "enabled": 1 if data.enabled else 0,
+        "auto_sync": 1 if data.auto_sync else 0,
+        "sync_interval_hours": data.sync_interval_hours,
+    }
     
-    _data_sources[source_id] = source
+    source = admin_crud.create_source(db, source_data)
     _add_log("Source créée", f"Source {data.name} ({data.type.value})", "success")
     
-    return source
+    return admin_crud.source_to_dict(source)
 
 
 @router.put(
     "/sources/{source_id}",
-    response_model=DataSourceConfig,
     summary="Modifier une source",
 )
-async def update_data_source(source_id: str, data: DataSourceUpdate):
+async def update_data_source(
+    source_id: str, 
+    data: DataSourceUpdate, 
+    db: Session = Depends(get_db)
+):
     """Met à jour une source de données."""
-    if source_id not in _data_sources:
+    source = admin_crud.get_source(db, source_id)
+    if not source:
         raise HTTPException(status_code=404, detail="Source non trouvée")
     
-    source = _data_sources[source_id]
     update_data = data.model_dump(exclude_unset=True)
+    # Convert booleans to int for SQLite
+    if "enabled" in update_data:
+        update_data["enabled"] = 1 if update_data["enabled"] else 0
+    if "auto_sync" in update_data:
+        update_data["auto_sync"] = 1 if update_data["auto_sync"] else 0
     
-    for field, value in update_data.items():
-        if field != "password":  # Don't expose password
-            setattr(source, field, value)
+    updated = admin_crud.update_source(db, source_id, update_data)
+    _add_log("Source modifiée", f"Source {updated.name} mise à jour", "info", source_id)
     
-    _add_log("Source modifiée", f"Source {source.name} mise à jour", "info", source_id)
-    
-    return source
+    return admin_crud.source_to_dict(updated)
 
 
 @router.delete(
     "/sources/{source_id}",
     summary="Supprimer une source",
 )
-async def delete_data_source(source_id: str):
+async def delete_data_source(source_id: str, db: Session = Depends(get_db)):
     """Supprime une source de données."""
-    if source_id not in _data_sources:
+    source = admin_crud.get_source(db, source_id)
+    if not source:
         raise HTTPException(status_code=404, detail="Source non trouvée")
     
-    source = _data_sources.pop(source_id)
-    _add_log("Source supprimée", f"Source {source.name} supprimée", "warning", source_id)
+    name = source.name
+    admin_crud.delete_source(db, source_id)
+    _add_log("Source supprimée", f"Source {name} supprimée", "warning", source_id)
     
     return {"message": "Source supprimée", "id": source_id}
 
@@ -241,39 +196,40 @@ async def delete_data_source(source_id: str):
     response_model=SyncResult,
     summary="Synchroniser une source",
 )
-async def sync_data_source(source_id: str, background_tasks: BackgroundTasks):
+async def sync_data_source(
+    source_id: str, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     """Déclenche une synchronisation manuelle d'une source."""
-    if source_id not in _data_sources:
+    source = admin_crud.get_source(db, source_id)
+    if not source:
         raise HTTPException(status_code=404, detail="Source non trouvée")
-    
-    source = _data_sources[source_id]
-    start_time = datetime.now()
     
     # Simulate sync (in production, call actual adapter)
     try:
-        # Mock sync result
+        # Mock sync result - in real implementation, this would call the adapter
+        records_count = 150
+        
+        admin_crud.update_source_sync_status(db, source_id, success=True, records_count=records_count)
+        
         result = SyncResult(
             source_id=source_id,
             source_name=source.name,
             success=True,
-            records_synced=150,
+            records_synced=records_count,
             duration_seconds=2.5,
         )
-        
-        source.last_sync = datetime.now()
-        source.status = DataSourceStatus.ACTIVE
-        source.records_count = 150
         
         _sync_results.insert(0, result)
         if len(_sync_results) > 50:
             _sync_results.pop()
         
-        _add_log("Synchronisation", f"Source {source.name} synchronisée (150 enregistrements)", "success", source_id)
+        _add_log("Synchronisation", f"Source {source.name} synchronisée ({records_count} enregistrements)", "success", source_id)
         
         return result
     except Exception as e:
-        source.status = DataSourceStatus.ERROR
-        source.last_error = str(e)
+        admin_crud.update_source_sync_status(db, source_id, success=False, error=str(e))
         
         result = SyncResult(
             source_id=source_id,
@@ -291,12 +247,11 @@ async def sync_data_source(source_id: str, background_tasks: BackgroundTasks):
     "/sources/{source_id}/test",
     summary="Tester la connexion",
 )
-async def test_data_source_connection(source_id: str):
+async def test_data_source_connection(source_id: str, db: Session = Depends(get_db)):
     """Teste la connexion à une source de données."""
-    if source_id not in _data_sources:
+    source = admin_crud.get_source(db, source_id)
+    if not source:
         raise HTTPException(status_code=404, detail="Source non trouvée")
-    
-    source = _data_sources[source_id]
     
     # Simulate connection test
     return {
@@ -315,9 +270,10 @@ async def test_data_source_connection(source_id: str):
     response_model=SystemSettings,
     summary="Paramètres système",
 )
-async def get_system_settings():
+async def get_system_settings(db: Session = Depends(get_db)):
     """Récupère les paramètres système du dashboard."""
-    return _system_settings
+    settings_dict = admin_crud.get_all_settings(db)
+    return SystemSettings(**settings_dict)
 
 
 @router.put(
@@ -325,12 +281,12 @@ async def get_system_settings():
     response_model=SystemSettings,
     summary="Modifier les paramètres",
 )
-async def update_system_settings(data: SystemSettings):
+async def update_system_settings(data: SystemSettings, db: Session = Depends(get_db)):
     """Met à jour les paramètres système."""
-    global _system_settings
-    _system_settings = data
+    settings_dict = data.model_dump()
+    updated = admin_crud.update_all_settings(db, settings_dict)
     _add_log("Paramètres modifiés", "Paramètres système mis à jour", "info")
-    return _system_settings
+    return SystemSettings(**updated)
 
 
 # ============== Cache ==============
@@ -383,7 +339,7 @@ async def clear_cache(
     summary="Jobs planifiés",
 )
 async def list_scheduled_jobs():
-    """Récupère la liste des jobs planifiés."""
+    """Récupère la liste des jobs planifiés (APScheduler)."""
     jobs_raw = scheduler.get_jobs() if settings.cache_enabled else []
     
     jobs = []
@@ -391,10 +347,44 @@ async def list_scheduled_jobs():
         jobs.append(ScheduledJob(
             id=job["id"],
             name=job["name"],
-            next_run=datetime.fromisoformat(job["next_run"]) if job["next_run"] else None,
+            next_run=datetime.fromisoformat(job["next_run"]) if job.get("next_run") else None,
             enabled=True,
             schedule="Voir configuration",
         ))
+    
+    # If no jobs from scheduler, show default job list (what would run)
+    if not jobs:
+        default_jobs = [
+            ScheduledJob(
+                id="refresh_scolarite",
+                name="Rafraîchir données scolarité",
+                description="Synchronise les données depuis ScoDoc",
+                schedule="Toutes les heures",
+                enabled=settings.cache_enabled,
+            ),
+            ScheduledJob(
+                id="refresh_budget",
+                name="Rafraîchir données budget",
+                description="Recalcule les indicateurs budget",
+                schedule="Toutes les 6 heures",
+                enabled=settings.cache_enabled,
+            ),
+            ScheduledJob(
+                id="refresh_recrutement",
+                name="Rafraîchir données recrutement",
+                description="Recalcule les indicateurs recrutement",
+                schedule="Toutes les 6 heures",
+                enabled=settings.cache_enabled,
+            ),
+            ScheduledJob(
+                id="cleanup_cache",
+                name="Nettoyage du cache",
+                description="Supprime les clés expirées",
+                schedule="Quotidien à minuit",
+                enabled=settings.cache_enabled,
+            ),
+        ]
+        return default_jobs
     
     return jobs
 
@@ -410,6 +400,7 @@ async def run_job_now(job_id: str):
         _add_log("Job exécuté", f"Job {job_id} exécuté manuellement", "success")
         return {"message": f"Job {job_id} exécuté", "status": "success"}
     except Exception as e:
+        _add_log("Erreur job", f"Échec exécution job {job_id}: {str(e)}", "error")
         raise HTTPException(status_code=400, detail=str(e))
 
 

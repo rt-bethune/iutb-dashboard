@@ -153,3 +153,39 @@ class StatistiquesParcoursup(Base):
     par_lycees = Column(Text, nullable=True)  # JSON - {"Lycée X": 10, ...}
     
     date_mise_a_jour = Column(Date, default=date.today)
+
+
+# ==================== SYSTEM SETTINGS ====================
+
+class SystemSettingsDB(Base):
+    """System settings stored in database."""
+    __tablename__ = "system_settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(100), unique=True, index=True, nullable=False)
+    value = Column(Text, nullable=True)
+    description = Column(String(255), nullable=True)
+    date_modification = Column(Date, default=date.today, onupdate=date.today)
+
+
+class DataSourceDB(Base):
+    """Data source configuration stored in database."""
+    __tablename__ = "data_source"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    source_id = Column(String(50), unique=True, index=True, nullable=False)  # e.g. 'scodoc-1'
+    name = Column(String(100), nullable=False)
+    type = Column(String(50), nullable=False)  # scodoc, parcoursup, excel, apogee
+    status = Column(String(50), default="inactive")  # active, inactive, error, configuring
+    description = Column(String(255), nullable=True)
+    base_url = Column(String(255), nullable=True)
+    username = Column(String(100), nullable=True)
+    password_encrypted = Column(String(255), nullable=True)  # Store encrypted
+    enabled = Column(Integer, default=1)  # SQLite doesn't have boolean
+    auto_sync = Column(Integer, default=1)
+    sync_interval_hours = Column(Integer, default=1)
+    last_sync = Column(Date, nullable=True)
+    last_error = Column(Text, nullable=True)
+    records_count = Column(Integer, default=0)
+    date_creation = Column(Date, default=date.today)
+    date_modification = Column(Date, default=date.today, onupdate=date.today)

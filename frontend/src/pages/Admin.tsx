@@ -116,6 +116,13 @@ export default function Admin() {
     },
   })
 
+  const updateSettingsMutation = useMutation({
+    mutationFn: adminApi.updateSettings,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'settings'] })
+    },
+  })
+
   if (loadingDashboard) {
     return <div className="flex items-center justify-center h-64">Chargement...</div>
   }
@@ -190,7 +197,11 @@ export default function Admin() {
       )}
 
       {activeTab === 'settings' && (
-        <SettingsTab settings={settings} />
+        <SettingsTab 
+          settings={settings} 
+          onSave={(data) => updateSettingsMutation.mutate(data)}
+          isSaving={updateSettingsMutation.isPending}
+        />
       )}
 
       {activeTab === 'logs' && (
@@ -525,7 +536,15 @@ function JobsTab({
 }
 
 // Settings Tab
-function SettingsTab({ settings }: { settings?: SystemSettings }) {
+function SettingsTab({ 
+  settings,
+  onSave,
+  isSaving
+}: { 
+  settings?: SystemSettings
+  onSave: (data: SystemSettings) => void
+  isSaving: boolean
+}) {
   const [formData, setFormData] = useState<SystemSettings>(settings || {
     dashboard_title: 'Dashboard Département',
     department_name: 'Département RT',
@@ -534,9 +553,24 @@ function SettingsTab({ settings }: { settings?: SystemSettings }) {
     cache_ttl_default: 3600,
     items_per_page: 25,
   })
+  const [saved, setSaved] = useState(false)
+
+  // Update form when settings load
+  useState(() => {
+    if (settings) {
+      setFormData(settings)
+    }
+  })
 
   const handleChange = (field: keyof SystemSettings, value: string | number | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+    setSaved(false)
+  }
+
+  const handleSave = () => {
+    onSave(formData)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 3000)
   }
 
   return (
@@ -639,8 +673,19 @@ function SettingsTab({ settings }: { settings?: SystemSettings }) {
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <button className="btn-primary">
+      <div className="flex justify-end gap-3">
+        {saved && (
+          <span className="flex items-center text-green-600 text-sm">
+            <CheckCircle className="w-4 h-4 mr-1" />
+            Paramètres sauvegardés
+          </span>
+        )}
+        <button 
+          onClick={handleSave}
+          disabled={isSaving}
+          className="btn-primary flex items-center gap-2"
+        >
+          {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
           Enregistrer les modifications
         </button>
       </div>
