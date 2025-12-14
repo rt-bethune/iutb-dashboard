@@ -278,7 +278,7 @@ async def dev_login(
     
     # Create mock CAS attributes
     attributes = {
-        'email': f'{username}@univ.fr',
+        'email': f'{username.replace(" ", ".").lower()}@univ.fr',
         'displayName': username.replace('.', ' ').title(),
     }
     
@@ -292,7 +292,7 @@ async def dev_login(
             # First user becomes superadmin
             user.is_active = True
             user.is_superadmin = True
-            user.date_validation = datetime.utcnow()
+            user.date_validation = datetime.now(datetime.timezone.utc)
             db.commit()
             logger.info(f"Auto-activated first user as superadmin: {username}")
         else:

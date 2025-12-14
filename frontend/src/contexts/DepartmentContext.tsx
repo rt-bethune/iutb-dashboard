@@ -6,10 +6,10 @@ export const DEPARTMENTS: Department[] = ['RT', 'GEII', 'GCCD', 'GMP', 'QLIO', '
 
 export const DEPARTMENT_NAMES: Record<Department, string> = {
   RT: 'Réseaux & Télécoms',
-  GEII: 'Génie Électrique',
-  GCCD: 'Génie Civil',
-  GMP: 'Génie Mécanique',
-  QLIO: 'Qualité Logistique',
+  GEII: 'Génie Électrique et Informatique Industrielle',
+  GCCD: 'Génie Civil et Construction Durable',
+  GMP: 'Génie Mécanique et Productique',
+  QLIO: 'Qualité Logistique Industrielle et Organisation',
   CHIMIE: 'Chimie',
 }
 
