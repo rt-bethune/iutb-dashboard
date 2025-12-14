@@ -301,3 +301,62 @@ async def run_job_now(job_id: str):
         return {"message": f"Job {job_id} exécuté", "status": "success"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============== Database Seeding ==============
+
+@router.post(
+    "/seed",
+    summary="Seed database with mock data",
+)
+async def seed_database_endpoint(
+    force: bool = Query(False, description="Force reseed (delete existing data)"),
+    db: Session = Depends(get_db),
+):
+    """
+    Seed the database with mock/demo data.
+    
+    Creates sample users with different permission levels:
+    - admin: Superadmin with all permissions
+    - chef_rt: RT department admin
+    - chef_geii: GEII department admin  
+    - enseignant_rt: RT teacher (view scolarite/edt only)
+    - secretaire: Secretary (scolarite/recrutement for RT & GEII)
+    - pending_user: Inactive account (pending validation)
+    
+    Also creates mock data for:
+    - Budget: 3 years of budget data per department
+    - Recrutement: 4 years of Parcoursup data per department
+    
+    Use force=true to delete existing data and reseed.
+    """
+    from app.seeds import seed_database
+    
+    result = seed_database(db, force=force)
+    
+    if result["skipped"]:
+        return {
+            "status": "skipped",
+            "message": "Database already has data. Use force=true to reseed.",
+        }
+    
+    return {
+        "status": "success",
+        "message": "Database seeded successfully",
+        "data": {
+            "users_created": result["users_created"],
+            "permissions_created": result["permissions_created"],
+            "budgets_created": result["budgets_created"],
+            "depenses_created": result["depenses_created"],
+            "campagnes_created": result["campagnes_created"],
+            "candidats_created": result["candidats_created"],
+        },
+        "test_accounts": [
+            {"login": "admin", "role": "Superadmin (all permissions)"},
+            {"login": "chef_rt", "role": "RT department admin"},
+            {"login": "chef_geii", "role": "GEII department admin"},
+            {"login": "enseignant_rt", "role": "RT teacher (view scolarite/edt only)"},
+            {"login": "secretaire", "role": "Secretary (scolarite/recrutement for RT & GEII)"},
+            {"login": "pending_user", "role": "Inactive account (pending validation)"},
+        ],
+    }

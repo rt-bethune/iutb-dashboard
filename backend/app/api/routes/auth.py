@@ -292,7 +292,7 @@ async def dev_login(
             # First user becomes superadmin
             user.is_active = True
             user.is_superadmin = True
-            user.date_validation = datetime.now(datetime.timezone.utc)
+            user.date_validation = datetime.utcnow()
             db.commit()
             logger.info(f"Auto-activated first user as superadmin: {username}")
         else:

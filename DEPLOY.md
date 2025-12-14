@@ -89,18 +89,49 @@ docker-compose -f docker-compose.prod.yml logs -f
 
 ```bash
 # Run migrations
-docker-compose -f docker-compose.prod.yml exec backend alembic upgrade head
+docker-compose -f docker-compose.prod.yml --env-file .env.prod exec backend alembic upgrade head
 ```
 
-### 6. Create First Admin User
+### 6. Seed Demo Data (Optional)
 
-Connect via CAS, then manually set superadmin in database:
+Populate the database with demo users, budget data, and recruitment data:
 
 ```bash
-docker-compose -f docker-compose.prod.yml exec db psql -U dashboard -d dept_dashboard
+# Via CLI
+docker-compose -f docker-compose.prod.yml --env-file .env.prod exec backend python -m app.seeds
+
+# Or via API (after services are running)
+curl -X POST "http://localhost:8000/api/admin/seed"
+
+# To reseed (deletes existing data)
+docker-compose -f docker-compose.prod.yml --env-file .env.prod exec backend python -m app.seeds --force
+```
+
+**Demo accounts created:**
+
+| Login | Role |
+|-------|------|
+| `admin` | Superadmin (all permissions) |
+| `chef_rt` | RT department admin |
+| `chef_geii` | GEII department admin |
+| `enseignant_rt` | RT teacher (view scolarite/edt only) |
+| `secretaire` | Secretary (scolarite/recrutement for RT & GEII) |
+| `pending_user` | Inactive account (pending validation) |
+
+**Demo data includes:**
+- 3 years of budget data per department (6 departments)
+- 4 years of Parcoursup/recruitment data per department
+- Sample expenses and candidates
+
+### 7. Create Admin User (Production)
+
+For production without demo data, connect via CAS then set superadmin:
+
+```bash
+docker-compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U dashboard -d dept_dashboard
 
 # In psql:
-UPDATE users SET is_superadmin = true, is_active = true WHERE cas_login = 'your_cas_login';
+UPDATE "user" SET is_superadmin = true, is_active = true WHERE cas_login = 'your_cas_login';
 \q
 ```
 

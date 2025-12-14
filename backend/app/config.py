@@ -61,7 +61,9 @@ class Settings(BaseSettings):
     @classmethod
     def validate_secret_key(cls, v: str) -> str:
         """Ensure secret key is changed in production."""
-        if not os.getenv('DEBUG', 'true').lower() == 'true':
+        debug = os.getenv('DEBUG', 'true').lower() == 'true'
+        allow_insecure = os.getenv('ALLOW_INSECURE', 'false').lower() == 'true'
+        if not debug and not allow_insecure:
             if v == "your-secret-key-change-in-production":
                 raise ValueError(
                     "SECRET_KEY must be changed in production! "
@@ -75,8 +77,13 @@ class Settings(BaseSettings):
     @classmethod
     def validate_cas_mock(cls, v: bool) -> bool:
         """Warn if CAS mock is enabled in production."""
-        if not os.getenv('DEBUG', 'true').lower() == 'true' and v:
-            raise ValueError("CAS_USE_MOCK must be False in production!")
+        debug = os.getenv('DEBUG', 'true').lower() == 'true'
+        allow_insecure = os.getenv('ALLOW_INSECURE', 'false').lower() == 'true'
+        if not debug and not allow_insecure and v:
+            raise ValueError(
+                "CAS_USE_MOCK must be False in production! "
+                "Set ALLOW_INSECURE=true for local Docker testing."
+            )
         return v
     
     class Config:

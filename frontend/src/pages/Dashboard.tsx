@@ -198,10 +198,10 @@ export default function Dashboard() {
                       border: '1px solid #e5e7eb',
                       borderRadius: '8px'
                     }}
-                    formatter={(value: number, _name: string, props: { payload: { fullName: string } }) => [
-                      `${value} étudiants`, 
-                      props.payload.fullName
-                    ]}
+                    formatter={(value: number, _name: string, props) => {
+                      const fullName = (props?.payload as { fullName?: string })?.fullName || ''
+                      return [`${value} étudiants`, fullName]
+                    }}
                   />
                   <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]}>
                     {semestreData.map((entry, index) => (

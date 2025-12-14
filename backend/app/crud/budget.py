@@ -388,13 +388,16 @@ def get_budget_stats(db: Session, department: str, annee: int) -> dict:
 
 
 def get_evolution_mensuelle(db: Session, budget_id: int) -> dict[str, float]:
-    """Get monthly spending evolution."""
-    depenses = db.query(
-        func.strftime("%Y-%m", DepenseDB.date_depense).label("mois"),
-        func.sum(DepenseDB.montant).label("total")
-    ).filter(
+    """Get monthly spending evolution (database agnostic)."""
+    # Fetch all expenses and aggregate in Python (works with both SQLite and PostgreSQL)
+    depenses = db.query(DepenseDB).filter(
         DepenseDB.budget_annuel_id == budget_id,
         DepenseDB.statut == "payee"
-    ).group_by("mois").all()
+    ).all()
     
-    return {d.mois: d.total for d in depenses}
+    evolution = {}
+    for dep in depenses:
+        mois = dep.date_depense.strftime("%Y-%m")
+        evolution[mois] = evolution.get(mois, 0) + dep.montant
+    
+    return evolution

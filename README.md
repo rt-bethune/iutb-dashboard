@@ -13,7 +13,7 @@ Tableau de bord modulaire pour un département d'enseignement, permettant de cen
 
 ```
 ┌─────────────────────────────────────────────┐
-│           Frontend React + Vite              │
+│           Frontend React + Vite             │
 └───────────────────┬─────────────────────────┘
                     │ REST API
 ┌───────────────────▼─────────────────────────┐
@@ -22,7 +22,7 @@ Tableau de bord modulaire pour un département d'enseignement, permettant de cen
                     │
 ┌───────────────────▼─────────────────────────┐
 │            Adapters (Plugins)               │
-│  ScoDoc │ Parcoursup │ Excel │ Apogée      │
+│  ScoDoc │ Parcoursup │ Excel │ Apogée       │
 └─────────────────────────────────────────────┘
 ```
 
@@ -98,6 +98,9 @@ docker-compose up -d
 | `SCODOC_PASSWORD` | Mot de passe ScoDoc | `****` |
 | `SCODOC_DEPARTMENT` | Code département | `RT` |
 | `SECRET_KEY` | Clé secrète JWT | `your-secret-key` |
+| `DATABASE_URL` | URL de la base de données | `sqlite:///./data/dashboard.db` |
+| `CAS_USE_MOCK` | Activer l'authentification de développement | `true` ou `false` |
+| `CAS_SERVICE_URL` | URL de callback CAS | `http://localhost:8000/api/auth/cas/callback` |
 
 ### Sources de données
 

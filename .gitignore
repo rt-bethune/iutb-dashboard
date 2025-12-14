@@ -42,3 +42,5 @@ yarn-error.log*
 /data/**/*.xlsx
 /data/**/*.xls
 
+nginx/ssl/**
+backend/data/**

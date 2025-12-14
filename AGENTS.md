@@ -22,9 +22,11 @@ Frontend (React/Vite) ──► API FastAPI ──► Adapters ──► Sources
 
 | Couche | Technologies |
 |--------|-------------|
-| Backend | FastAPI, Python 3.11+, Pydantic v2, httpx, pandas |
+| Backend | FastAPI, Python 3.11+, Pydantic v2, SQLAlchemy, httpx, pandas |
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS, Recharts |
+| Database | PostgreSQL (prod) / SQLite (dev) |
 | Cache | Redis 7 |
+| Migrations | Alembic |
 | Scheduler | APScheduler |
 | Tests | pytest, pytest-asyncio |
 | Déploiement | Docker, docker-compose |
@@ -51,12 +53,17 @@ Dept-Dashboard/
 │   │   │   ├── scodoc.py        # API ScoDoc
 │   │   │   ├── parcoursup.py    # Parsing CSV Parcoursup
 │   │   │   └── excel.py         # Lecture fichiers Excel/CSV
-│   │   ├── models/              # Modèles Pydantic
+│   │   ├── models/              # Modèles Pydantic + SQLAlchemy
+│   │   │   ├── db_models.py     # Modèles SQLAlchemy (tables DB)
 │   │   │   ├── scolarite.py
 │   │   │   ├── recrutement.py
 │   │   │   ├── budget.py
 │   │   │   ├── edt.py
 │   │   │   └── admin.py
+│   │   ├── crud/                # Opérations CRUD par domaine
+│   │   │   ├── budget.py
+│   │   │   └── admin_crud.py
+│   │   ├── seeds.py             # Données de démonstration
 │   │   └── services/
 │   │       ├── cache.py         # Service Redis
 │   │       └── scheduler.py     # APScheduler jobs
@@ -81,9 +88,16 @@ Dept-Dashboard/
 │   │   ├── hooks/               # Custom React hooks
 │   │   └── types/               # Types TypeScript
 │   └── package.json
+├── backend/
+│   ├── alembic/                 # Migrations de base de données
+│   │   └── versions/            # Fichiers de migration
+│   └── alembic.ini              # Configuration Alembic
 ├── data/
 │   └── examples/                # Fichiers CSV d'exemple
-├── docker-compose.yml
+├── docker-compose.yml           # Développement
+├── docker-compose.prod.yml      # Production
+├── .env.prod.example            # Template variables production
+├── DEPLOY.md                    # Guide de déploiement
 ├── plan.md                      # Plan de projet détaillé
 └── AGENTS.md                    # Ce fichier
 ```
