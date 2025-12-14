@@ -1,9 +1,15 @@
 import { Clock, Mail, ArrowLeft } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function PendingValidation() {
   const { logout } = useAuth()
+  const navigate = useNavigate()
+
+  const handleBackToLogin = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center p-4">
@@ -46,7 +52,7 @@ export default function PendingValidation() {
             </button>
             
             <button
-              onClick={logout}
+              onClick={handleBackToLogin}
               className="w-full flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
