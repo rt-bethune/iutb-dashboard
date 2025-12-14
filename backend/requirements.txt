@@ -15,9 +15,13 @@ pandas
 openpyxl
 python-dateutil
 
-# Database (optional - for caching)
+# Database
 sqlalchemy
 asyncpg
+psycopg2-binary
+
+# Migrations
+alembic
 
 # Cache & Scheduling
 redis

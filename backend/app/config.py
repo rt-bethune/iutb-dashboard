@@ -1,8 +1,10 @@
 """Configuration settings for the application."""
 
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import Optional
 from functools import lru_cache
+import os
 
 
 class Settings(BaseSettings):
@@ -25,8 +27,8 @@ class Settings(BaseSettings):
     scodoc_password: Optional[str] = None
     scodoc_department: Optional[str] = None
     
-    # Database (optional - for caching)
-    database_url: Optional[str] = None
+    # Database
+    database_url: Optional[str] = None  # If None, uses SQLite
     
     # Redis Cache
     redis_url: str = "redis://localhost:6379"
@@ -54,6 +56,28 @@ class Settings(BaseSettings):
     # File Upload
     upload_dir: str = "./uploads"
     max_upload_size: int = 10 * 1024 * 1024  # 10MB
+    
+    @field_validator('secret_key')
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
+        """Ensure secret key is changed in production."""
+        if not os.getenv('DEBUG', 'true').lower() == 'true':
+            if v == "your-secret-key-change-in-production":
+                raise ValueError(
+                    "SECRET_KEY must be changed in production! "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                )
+            if len(v) < 32:
+                raise ValueError("SECRET_KEY must be at least 32 characters in production")
+        return v
+    
+    @field_validator('cas_use_mock')
+    @classmethod
+    def validate_cas_mock(cls, v: bool) -> bool:
+        """Warn if CAS mock is enabled in production."""
+        if not os.getenv('DEBUG', 'true').lower() == 'true' and v:
+            raise ValueError("CAS_USE_MOCK must be False in production!")
+        return v
     
     class Config:
         env_file = ".env"
