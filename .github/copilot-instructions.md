@@ -59,6 +59,23 @@ const canView = checkPermission(department, 'can_view_budget')
 - **Dev**: SQLite at `backend/data/dashboard.db`
 - **Prod**: PostgreSQL via `DATABASE_URL` env var
 - **Migrations**: Alembic in `backend/alembic/`
+- **DB-agnostic**: Avoid SQLite-specific functions (e.g., `strftime`) - use Python-level processing
+
+## Database Schema
+
+**Main tables:**
+- `user` / `user_permission` - Authentication & department-scoped permissions
+- `budget_annuel` / `ligne_budget` / `depense` - Budget tracking per department/year
+- `campagne_recrutement` / `candidat` / `stats_parcoursup` - Parcoursup recruitment data
+
+**Seeding mock data:**
+```bash
+# CLI
+python -m app.seeds --force
+
+# API
+curl -X POST "http://localhost:8000/api/admin/seed?force=true"
+```
 
 ## Adding Features
 
