@@ -8,6 +8,7 @@ import StatCard from '@/components/StatCard'
 import ChartContainer from '@/components/ChartContainer'
 import DataTable from '@/components/DataTable'
 import ProgressBar from '@/components/ProgressBar'
+import PermissionGate from '@/components/PermissionGate'
 import { edtApi } from '@/services/api'
 import { useDepartment } from '../contexts/DepartmentContext'
 import type { ChargeEnseignant, OccupationSalle } from '@/types'
@@ -15,7 +16,7 @@ import type { ChargeEnseignant, OccupationSalle } from '@/types'
 export default function EDT() {
   const { department } = useDepartment()
 
-  const { data: indicators, isLoading } = useQuery({
+  const { data: indicators, isLoading, error } = useQuery({
     queryKey: ['edt', 'indicators', department],
     queryFn: () => edtApi.getIndicators(department),
   })
@@ -23,12 +24,31 @@ export default function EDT() {
   const { data: repartition } = useQuery({
     queryKey: ['edt', 'repartition', department],
     queryFn: () => edtApi.getRepartition(department),
+    enabled: !!indicators,
   })
 
   const { data: heuresComp } = useQuery({
     queryKey: ['edt', 'heures-complementaires', department],
     queryFn: () => edtApi.getHeuresComplementaires(department),
+    enabled: !!indicators,
   })
+
+  // Handle permission errors
+  if (error) {
+    const axiosError = error as any
+    if (axiosError?.response?.status === 403) {
+      return (
+        <PermissionGate domain="edt" action="view">
+          <div />
+        </PermissionGate>
+      )
+    }
+    return (
+      <div className="flex items-center justify-center h-64 text-red-500">
+        Erreur lors du chargement des données
+      </div>
+    )
+  }
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64">Chargement...</div>

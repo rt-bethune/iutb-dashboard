@@ -26,6 +26,7 @@ apscheduler
 # Authentication
 python-jose[cryptography]
 passlib[bcrypt]
+PyJWT
 
 # Testing
 pytest

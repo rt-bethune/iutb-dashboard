@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Scolarite from './pages/Scolarite'
@@ -9,11 +9,48 @@ import Admin from './pages/Admin'
 import AdminBudget from './pages/AdminBudget'
 import AdminRecrutement from './pages/AdminRecrutement'
 import Upload from './pages/Upload'
+import Login from './pages/Login'
+import PendingValidation from './pages/PendingValidation'
+import UsersManagement from './pages/UsersManagement'
+import { useAuth } from './contexts/AuthContext'
+import { Loader2 } from 'lucide-react'
+
+// Protected route wrapper
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading, isPending } = useAuth()
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    )
+  }
+
+  if (isPending) {
+    return <Navigate to="/auth/pending" replace />
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <>{children}</>
+}
 
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Layout />}>
+      {/* Public routes */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/auth/pending" element={<PendingValidation />} />
+
+      {/* Protected routes */}
+      <Route path="/" element={
+        <ProtectedRoute>
+          <Layout />
+        </ProtectedRoute>
+      }>
         <Route index element={<Dashboard />} />
         <Route path="scolarite" element={<Scolarite />} />
         <Route path="recrutement" element={<Recrutement />} />
@@ -23,6 +60,7 @@ function App() {
         <Route path="admin" element={<Admin />} />
         <Route path="admin/budget" element={<AdminBudget />} />
         <Route path="admin/recrutement" element={<AdminRecrutement />} />
+        <Route path="admin/users" element={<UsersManagement />} />
       </Route>
     </Routes>
   )

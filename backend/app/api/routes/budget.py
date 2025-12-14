@@ -1,11 +1,15 @@
 """Budget API routes."""
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
 from typing import Optional
 
 from app.models.budget import BudgetIndicators, CategorieDepense
+from app.models.db_models import UserDB
 from app.adapters.excel import MockExcelAdapter, ExcelAdapter
-from app.api.deps import DepartmentDep
+from app.api.deps import (
+    DepartmentDep,
+    require_view_budget, require_edit_budget, require_import
+)
 from app.services import cache, CacheKeys
 from app.config import get_settings
 
@@ -20,6 +24,7 @@ _file_adapter = ExcelAdapter()
 @router.get("/indicators", response_model=BudgetIndicators)
 async def get_budget_indicators(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_budget),
     annee: Optional[int] = Query(None, description="Année budgétaire"),
     refresh: bool = Query(False, description="Force cache refresh"),
 ):
@@ -51,6 +56,7 @@ async def get_budget_indicators(
 @router.get("/par-categorie")
 async def get_budget_par_categorie(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_budget),
     annee: Optional[int] = Query(None, description="Année budgétaire"),
 ):
     """
@@ -77,6 +83,7 @@ async def get_budget_par_categorie(
 @router.get("/evolution")
 async def get_budget_evolution(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_budget),
     annee: Optional[int] = Query(None, description="Année budgétaire"),
 ):
     """
@@ -93,6 +100,7 @@ async def get_budget_evolution(
 @router.get("/execution")
 async def get_taux_execution(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_budget),
 ):
     """
     Get budget execution rates.
@@ -111,6 +119,7 @@ async def get_taux_execution(
 @router.get("/top-depenses")
 async def get_top_depenses(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_budget),
     limit: int = Query(10, le=50, description="Number of results"),
     categorie: Optional[CategorieDepense] = Query(None, description="Filter by category"),
 ):
@@ -129,6 +138,7 @@ async def get_top_depenses(
 @router.post("/import")
 async def import_budget_file(
     department: DepartmentDep,
+    user: UserDB = Depends(require_import),
     file: UploadFile = File(..., description="Budget Excel file"),
     annee: int = Query(..., description="Année budgétaire"),
 ):

@@ -3,9 +3,9 @@
 All domain-specific data (budget, recrutement, EDT) is scoped by department.
 """
 
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, Text, UniqueConstraint, Boolean, DateTime
 from sqlalchemy.orm import relationship
-from datetime import date
+from datetime import date, datetime
 import enum
 
 from app.database import Base
@@ -14,6 +14,72 @@ from app.database import Base
 # ==================== DEPARTMENTS ====================
 
 DEPARTMENTS = ["RT", "GEII", "GCCD", "GMP", "QLIO", "CHIMIE"]
+
+
+# ==================== PERMISSIONS ====================
+
+class PermissionType(str, enum.Enum):
+    """Permission types."""
+    VIEW = "view"           # Can view data
+    EDIT = "edit"           # Can edit data
+    ADMIN = "admin"         # Full admin access
+    IMPORT = "import"       # Can import data
+    EXPORT = "export"       # Can export data
+
+
+class UserDB(Base):
+    """User account linked to CAS authentication."""
+    __tablename__ = "user"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    cas_login = Column(String(100), unique=True, index=True, nullable=False)  # CAS username
+    email = Column(String(255), nullable=True)
+    nom = Column(String(100), nullable=True)
+    prenom = Column(String(100), nullable=True)
+    
+    # Account status
+    is_active = Column(Boolean, default=False)  # Must be validated by admin
+    is_superadmin = Column(Boolean, default=False)  # Global admin (all departments)
+    
+    # Timestamps
+    date_creation = Column(DateTime, default=datetime.utcnow)
+    date_derniere_connexion = Column(DateTime, nullable=True)
+    date_validation = Column(DateTime, nullable=True)
+    validated_by = Column(Integer, ForeignKey("user.id"), nullable=True)
+    
+    # Relations
+    permissions = relationship("UserPermissionDB", back_populates="user", cascade="all, delete-orphan", foreign_keys="[UserPermissionDB.user_id]")
+
+
+class UserPermissionDB(Base):
+    """Department-scoped permissions for users."""
+    __tablename__ = "user_permission"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
+    department = Column(String(20), index=True, nullable=False)  # RT, GEII, etc.
+    
+    # Permissions by domain
+    can_view_scolarite = Column(Boolean, default=True)
+    can_edit_scolarite = Column(Boolean, default=False)
+    can_view_recrutement = Column(Boolean, default=True)
+    can_edit_recrutement = Column(Boolean, default=False)
+    can_view_budget = Column(Boolean, default=False)
+    can_edit_budget = Column(Boolean, default=False)
+    can_view_edt = Column(Boolean, default=True)
+    can_edit_edt = Column(Boolean, default=False)
+    can_import = Column(Boolean, default=False)
+    can_export = Column(Boolean, default=True)
+    is_dept_admin = Column(Boolean, default=False)  # Admin for this department
+    
+    date_creation = Column(DateTime, default=datetime.utcnow)
+    granted_by = Column(Integer, ForeignKey("user.id"), nullable=True)
+    
+    # Unique constraint: one permission set per user per department
+    __table_args__ = (UniqueConstraint('user_id', 'department', name='uq_user_dept_permission'),)
+    
+    # Relations
+    user = relationship("UserDB", back_populates="permissions", foreign_keys=[user_id])
 
 
 # ==================== BUDGET MODELS ====================

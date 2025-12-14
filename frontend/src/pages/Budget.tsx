@@ -10,6 +10,7 @@ import StatCard from '@/components/StatCard'
 import ChartContainer from '@/components/ChartContainer'
 import DataTable from '@/components/DataTable'
 import ProgressBar from '@/components/ProgressBar'
+import PermissionGate from '@/components/PermissionGate'
 import { adminBudgetApi } from '@/services/api'
 import { useDepartment } from '../contexts/DepartmentContext'
 
@@ -36,17 +37,36 @@ export default function Budget() {
   const [selectedYear, setSelectedYear] = useState<number | undefined>(undefined)
 
   // Fetch available years
-  const { data: budgetYears } = useQuery({
+  const { data: budgetYears, error: yearsError } = useQuery({
     queryKey: ['budget', 'years', department],
     queryFn: () => adminBudgetApi.getYears(department),
   })
 
   const availableYears = (budgetYears ?? []).map((b: { annee: number }) => b.annee).sort((a: number, b: number) => b - a)
 
-  const { data: indicators, isLoading } = useQuery({
+  const { data: indicators, isLoading, error } = useQuery({
     queryKey: ['budget', 'indicators', department, selectedYear],
     queryFn: () => adminBudgetApi.getIndicators(department, selectedYear),
+    enabled: !yearsError, // Don't fetch indicators if years failed
   })
+
+  // Handle permission errors from either query
+  const permissionError = yearsError || error
+  if (permissionError) {
+    const axiosError = permissionError as any
+    if (axiosError?.response?.status === 403) {
+      return (
+        <PermissionGate domain="budget" action="view">
+          <div />
+        </PermissionGate>
+      )
+    }
+    return (
+      <div className="flex items-center justify-center h-64 text-red-500">
+        Erreur lors du chargement des données
+      </div>
+    )
+  }
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64">Chargement...</div>

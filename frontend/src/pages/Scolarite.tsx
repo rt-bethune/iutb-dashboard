@@ -10,6 +10,7 @@ import ChartContainer from '@/components/ChartContainer'
 import DataTable from '@/components/DataTable'
 import ProgressBar from '@/components/ProgressBar'
 import FilterBar, { FilterConfig, FilterValues, YearSelector, PeriodSelector } from '@/components/FilterBar'
+import PermissionGate from '@/components/PermissionGate'
 import { scolariteApi } from '@/services/api'
 import { useDepartment } from '../contexts/DepartmentContext'
 import type { ModuleStats } from '@/types'
@@ -56,7 +57,7 @@ export default function Scolarite() {
   const [year, setYear] = useState<string>('')
   const [period, setPeriod] = useState<string>('all')
 
-  const { data: indicators, isLoading } = useQuery({
+  const { data: indicators, isLoading, error } = useQuery({
     queryKey: ['scolarite', 'indicators', department, year],
     queryFn: () => scolariteApi.getIndicators(department, year || undefined),
   })
@@ -64,7 +65,25 @@ export default function Scolarite() {
   const { data: effectifs } = useQuery({
     queryKey: ['scolarite', 'effectifs', department],
     queryFn: () => scolariteApi.getEffectifs(department),
+    enabled: !!indicators, // Only fetch if indicators loaded successfully
   })
+
+  // Handle permission errors
+  if (error) {
+    const axiosError = error as any
+    if (axiosError?.response?.status === 403) {
+      return (
+        <PermissionGate domain="scolarite" action="view">
+          <div />
+        </PermissionGate>
+      )
+    }
+    return (
+      <div className="flex items-center justify-center h-64 text-red-500">
+        Erreur lors du chargement des données
+      </div>
+    )
+  }
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64">Chargement...</div>

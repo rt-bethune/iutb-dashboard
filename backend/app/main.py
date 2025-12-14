@@ -7,7 +7,7 @@ from fastapi.openapi.utils import get_openapi
 
 from app.config import get_settings
 from app.api.routes import scolarite, recrutement, budget, edt, upload, admin
-from app.api.routes import budget_admin, recrutement_admin
+from app.api.routes import budget_admin, recrutement_admin, auth, users
 from app.services import cache, scheduler
 from app.database import init_db
 
@@ -178,6 +178,20 @@ app.include_router(
     admin.router,
     prefix=f"{settings.api_prefix}/admin",
     tags=["Administration"],
+)
+
+# Authentication routes
+app.include_router(
+    auth.router,
+    prefix=f"{settings.api_prefix}/auth",
+    tags=["Authentication"],
+)
+
+# User management routes (admin)
+app.include_router(
+    users.router,
+    prefix=f"{settings.api_prefix}/admin/users",
+    tags=["User Management"],
 )
 
 

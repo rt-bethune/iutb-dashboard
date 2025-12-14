@@ -7,6 +7,30 @@ const api = axios.create({
   },
 })
 
+// Add auth token interceptor
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('auth_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// Handle 401/403 errors globally
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid - clear and redirect to login
+      localStorage.removeItem('auth_token')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
+)
+
 // Helper to build department-scoped URLs
 const withDept = (path: string, department: string) => `/${department}${path}`
 
@@ -249,6 +273,63 @@ export const adminRecrutementApi = {
 // Departments endpoint (global)
 export const departmentsApi = {
   getAll: () => api.get('/departments').then(res => res.data),
+}
+
+// Auth API
+export const authApi = {
+  devLogin: (username: string) => 
+    api.post(`/auth/dev/login?username=${encodeURIComponent(username)}`).then(res => res.data),
+  me: (token: string) => 
+    api.get('/auth/me', { params: { token } }).then(res => res.data),
+  validateToken: (token: string) =>
+    api.post('/auth/validate-token', null, { params: { token } }).then(res => res.data),
+  logout: (returnUrl?: string) => 
+    api.get('/auth/logout', { params: { return_url: returnUrl } }).then(res => res.data),
+}
+
+// Users Admin API
+export const usersApi = {
+  // Users
+  getUsers: (params?: { is_active?: boolean; search?: string }) =>
+    api.get('/admin/users', { params }).then(res => res.data),
+  getUser: (id: number) =>
+    api.get(`/admin/users/${id}`).then(res => res.data),
+  updateUser: (id: number, data: { is_active?: boolean; is_superadmin?: boolean }) =>
+    api.put(`/admin/users/${id}`, data).then(res => res.data),
+  validateUser: (id: number) =>
+    api.post(`/admin/users/${id}/validate`).then(res => res.data),
+  deleteUser: (id: number) =>
+    api.delete(`/admin/users/${id}`).then(res => res.data),
+  
+  // Permissions
+  getUserPermissions: (userId: number, department?: string) =>
+    api.get(`/admin/users/${userId}/permissions`, { params: { department } }).then(res => res.data),
+  updatePermission: (userId: number, department: string, data: {
+    can_view_scolarite?: boolean;
+    can_edit_scolarite?: boolean;
+    can_view_recrutement?: boolean;
+    can_edit_recrutement?: boolean;
+    can_view_budget?: boolean;
+    can_edit_budget?: boolean;
+    can_view_edt?: boolean;
+    can_edit_edt?: boolean;
+    can_import?: boolean;
+    can_export?: boolean;
+    is_dept_admin?: boolean;
+  }) => api.put(`/admin/users/${userId}/permissions/${department}`, data).then(res => res.data),
+  deletePermission: (userId: number, department: string) =>
+    api.delete(`/admin/users/${userId}/permissions/${department}`).then(res => res.data),
+  grantPermissions: (userId: number, departments: string[], permissions: {
+    can_view_scolarite?: boolean;
+    can_view_recrutement?: boolean;
+    can_view_budget?: boolean;
+    can_view_edt?: boolean;
+    can_export?: boolean;
+  }) => api.post(`/admin/users/${userId}/permissions/bulk`, { departments, permissions }).then(res => res.data),
+  
+  // Department overview
+  getDepartmentOverview: () =>
+    api.get('/admin/users/departments/overview').then(res => res.data),
 }
 
 export default api

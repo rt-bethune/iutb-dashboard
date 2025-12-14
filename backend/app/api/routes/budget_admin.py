@@ -7,7 +7,11 @@ from datetime import date
 
 from app.database import get_db
 from app.crud import budget_crud
-from app.api.deps import DepartmentDep
+from app.api.deps import (
+    DepartmentDep,
+    require_view_budget, require_edit_budget, require_import
+)
+from app.models.db_models import UserDB
 from app.schemas.budget import (
     BudgetAnnuelCreate,
     BudgetAnnuelUpdate,
@@ -33,6 +37,7 @@ router = APIRouter()
 @router.get("/years", response_model=list[BudgetAnnuelSummary])
 async def list_budget_years(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_budget),
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, le=100),
@@ -57,6 +62,7 @@ async def list_budget_years(
 async def get_budget_year(
     department: DepartmentDep,
     annee: int,
+    user: UserDB = Depends(require_view_budget),
     db: Session = Depends(get_db),
 ):
     """Get budget details for a specific year."""
@@ -99,6 +105,7 @@ async def get_budget_year(
 async def create_budget_year(
     department: DepartmentDep,
     budget: BudgetAnnuelCreate,
+    user: UserDB = Depends(require_edit_budget),
     db: Session = Depends(get_db),
 ):
     """Create a new budget year."""
@@ -115,6 +122,7 @@ async def update_budget_year(
     department: DepartmentDep,
     annee: int,
     budget: BudgetAnnuelUpdate,
+    user: UserDB = Depends(require_edit_budget),
     db: Session = Depends(get_db),
 ):
     """Update a budget year."""
@@ -128,6 +136,7 @@ async def update_budget_year(
 async def delete_budget_year(
     department: DepartmentDep,
     annee: int,
+    user: UserDB = Depends(require_edit_budget),
     db: Session = Depends(get_db),
 ):
     """Delete a budget year and all related data."""
@@ -143,6 +152,7 @@ async def create_ligne_budget(
     department: DepartmentDep,
     annee: int,
     ligne: LigneBudgetCreate,
+    user: UserDB = Depends(require_edit_budget),
     db: Session = Depends(get_db),
 ):
     """Add a budget line to a year."""
@@ -173,6 +183,7 @@ async def update_ligne_budget(
     department: DepartmentDep,
     ligne_id: int,
     ligne: LigneBudgetUpdate,
+    user: UserDB = Depends(require_edit_budget),
     db: Session = Depends(get_db),
 ):
     """Update a budget line."""
@@ -195,6 +206,7 @@ async def update_ligne_budget(
 async def delete_ligne_budget(
     department: DepartmentDep,
     ligne_id: int,
+    user: UserDB = Depends(require_edit_budget),
     db: Session = Depends(get_db),
 ):
     """Delete a budget line."""
@@ -209,6 +221,7 @@ async def delete_ligne_budget(
 async def list_depenses(
     department: DepartmentDep,
     annee: int,
+    user: UserDB = Depends(require_view_budget),
     categorie: Optional[CategorieDepense] = None,
     statut: Optional[str] = Query(None, pattern="^(prevue|engagee|payee)$"),
     skip: int = Query(0, ge=0),
@@ -248,6 +261,7 @@ async def create_depense(
     department: DepartmentDep,
     annee: int,
     depense: DepenseCreate,
+    user: UserDB = Depends(require_edit_budget),
     db: Session = Depends(get_db),
 ):
     """Create a new expense."""
@@ -271,6 +285,7 @@ async def update_depense(
     department: DepartmentDep,
     depense_id: int,
     depense: DepenseUpdate,
+    user: UserDB = Depends(require_edit_budget),
     db: Session = Depends(get_db),
 ):
     """Update an expense."""
@@ -294,6 +309,7 @@ async def update_depense(
 async def delete_depense(
     department: DepartmentDep,
     depense_id: int,
+    user: UserDB = Depends(require_edit_budget),
     db: Session = Depends(get_db),
 ):
     """Delete an expense."""
@@ -307,6 +323,7 @@ async def delete_depense(
 @router.post("/import", response_model=ImportResult)
 async def import_budget_file(
     department: DepartmentDep,
+    user: UserDB = Depends(require_import),
     file: UploadFile = File(..., description="Budget Excel file"),
     annee: int = Query(..., description="Année budgétaire"),
     db: Session = Depends(get_db),
@@ -336,6 +353,7 @@ async def import_budget_file(
 @router.get("/indicators", response_model=BudgetIndicators)
 async def get_budget_indicators(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_budget),
     annee: Optional[int] = Query(None, description="Année budgétaire"),
     db: Session = Depends(get_db),
 ):

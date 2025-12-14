@@ -1,12 +1,16 @@
 """Scolarité API routes."""
 
-from fastapi import APIRouter, HTTPException, Query, Path
+from fastapi import APIRouter, HTTPException, Query, Path, Depends
 from typing import Optional
 import logging
 
 from app.models.scolarite import ScolariteIndicators, Etudiant, ModuleStats
+from app.models.db_models import UserDB
 from app.adapters.scodoc import ScoDocAdapter, MockScoDocAdapter
-from app.api.deps import DepartmentDep, get_scodoc_adapter_for_department
+from app.api.deps import (
+    DepartmentDep, get_scodoc_adapter_for_department,
+    require_view_scolarite, require_edit_scolarite, require_import
+)
 from app.services import cache, CacheKeys
 from app.config import get_settings
 
@@ -34,6 +38,7 @@ def _get_adapter(department: str):
 )
 async def get_scolarite_indicators(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_scolarite),
     annee: Optional[str] = Query(None, description="Année universitaire (ex: 2024-2025)", example="2024-2025"),
     refresh: bool = Query(False, description="Force le rafraîchissement du cache"),
 ):
@@ -84,6 +89,7 @@ async def get_scolarite_indicators(
 )
 async def get_etudiants(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_scolarite),
     formation: Optional[str] = Query(None, description="Filtrer par formation", example="BUT RT"),
     semestre: Optional[str] = Query(None, description="Filtrer par semestre", example="S1"),
     limit: int = Query(100, le=500, ge=1, description="Nombre maximum de résultats"),
@@ -139,6 +145,7 @@ async def get_etudiants(
 )
 async def get_modules_stats(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_scolarite),
     semestre: Optional[str] = Query(None, description="Filtrer par semestre", example="S1"),
 ):
     """
@@ -174,6 +181,7 @@ async def get_modules_stats(
 )
 async def get_effectifs_evolution(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_scolarite),
 ):
     """
     Récupère l'évolution des effectifs sur plusieurs années.
@@ -203,6 +211,7 @@ async def get_effectifs_evolution(
 )
 async def get_taux_reussite(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_scolarite),
     annee: Optional[str] = Query(None, description="Année universitaire", example="2024-2025"),
 ):
     """
@@ -238,6 +247,7 @@ async def get_taux_reussite(
 )
 async def check_scodoc_health(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_scolarite),
 ):
     """
     Vérifie l'état de la connexion à l'API ScoDoc.

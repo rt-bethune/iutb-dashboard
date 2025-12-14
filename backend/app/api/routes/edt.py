@@ -1,12 +1,16 @@
 """EDT (Emploi du Temps) API routes."""
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
 from typing import Optional
 from datetime import date
 
 from app.models.edt import EDTIndicators, ChargeEnseignant
+from app.models.db_models import UserDB
 from app.adapters.excel import MockExcelAdapter, ExcelAdapter
-from app.api.deps import DepartmentDep
+from app.api.deps import (
+    DepartmentDep,
+    require_view_edt, require_edit_edt, require_import
+)
 from app.services import cache, CacheKeys
 from app.config import get_settings
 
@@ -21,6 +25,7 @@ _file_adapter = ExcelAdapter()
 @router.get("/indicators", response_model=EDTIndicators)
 async def get_edt_indicators(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_edt),
     annee: Optional[str] = Query(None, description="Année universitaire (ex: 2024-2025)"),
     refresh: bool = Query(False, description="Force cache refresh"),
 ):
@@ -52,6 +57,7 @@ async def get_edt_indicators(
 @router.get("/charges", response_model=list[ChargeEnseignant])
 async def get_charges_enseignants(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_edt),
     enseignant: Optional[str] = Query(None, description="Filter by teacher name"),
 ):
     """
@@ -71,6 +77,7 @@ async def get_charges_enseignants(
 @router.get("/occupation")
 async def get_occupation_salles(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_edt),
     salle: Optional[str] = Query(None, description="Filter by room"),
 ):
     """
@@ -91,6 +98,7 @@ async def get_occupation_salles(
 @router.get("/repartition")
 async def get_repartition_heures(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_edt),
 ):
     """
     Get hours distribution by type (CM/TD/TP).
@@ -109,6 +117,7 @@ async def get_repartition_heures(
 @router.get("/heures-complementaires")
 async def get_heures_complementaires(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_edt),
 ):
     """
     Get complementary hours summary.
@@ -131,6 +140,7 @@ async def get_heures_complementaires(
 @router.get("/par-module")
 async def get_heures_par_module(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_edt),
 ):
     """
     Get hours by module.
@@ -148,6 +158,7 @@ async def get_heures_par_module(
 @router.post("/import")
 async def import_edt_file(
     department: DepartmentDep,
+    user: UserDB = Depends(require_import),
     file: UploadFile = File(..., description="EDT Excel file"),
     annee: Optional[str] = Query(None, description="Année universitaire"),
 ):

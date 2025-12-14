@@ -9,6 +9,7 @@ import {
 import StatCard from '@/components/StatCard'
 import ChartContainer from '@/components/ChartContainer'
 import DataTable from '@/components/DataTable'
+import PermissionGate from '@/components/PermissionGate'
 import { adminRecrutementApi } from '@/services/api'
 import { useDepartment } from '../contexts/DepartmentContext'
 
@@ -26,10 +27,27 @@ export default function Recrutement() {
 
   const availableYears = (campagnes ?? []).map((c: { annee: number }) => c.annee).sort((a: number, b: number) => b - a)
 
-  const { data: indicators, isLoading } = useQuery({
+  const { data: indicators, isLoading, error } = useQuery({
     queryKey: ['recrutement', 'indicators', department, selectedYear],
     queryFn: () => adminRecrutementApi.getIndicators(department, selectedYear),
   })
+
+  // Handle permission errors
+  if (error) {
+    const axiosError = error as any
+    if (axiosError?.response?.status === 403) {
+      return (
+        <PermissionGate domain="recrutement" action="view">
+          <div />
+        </PermissionGate>
+      )
+    }
+    return (
+      <div className="flex items-center justify-center h-64 text-red-500">
+        Erreur lors du chargement des données
+      </div>
+    )
+  }
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64">Chargement...</div>

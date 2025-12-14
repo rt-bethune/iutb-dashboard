@@ -7,7 +7,11 @@ from datetime import date
 
 from app.database import get_db
 from app.crud import recrutement_crud
-from app.api.deps import DepartmentDep
+from app.api.deps import (
+    DepartmentDep,
+    require_view_recrutement, require_edit_recrutement, require_import
+)
+from app.models.db_models import UserDB
 from app.schemas.recrutement import (
     CampagneCreate,
     CampagneUpdate,
@@ -33,6 +37,7 @@ router = APIRouter()
 @router.get("/campagnes", response_model=list[CampagneSummary])
 async def list_campagnes(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_recrutement),
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, le=100),
@@ -61,6 +66,7 @@ async def list_campagnes(
 async def get_campagne(
     department: DepartmentDep,
     annee: int,
+    user: UserDB = Depends(require_view_recrutement),
     db: Session = Depends(get_db),
 ):
     """Get campaign details for a specific year."""
@@ -91,6 +97,7 @@ async def get_campagne(
 async def create_campagne(
     department: DepartmentDep,
     campagne: CampagneCreate,
+    user: UserDB = Depends(require_edit_recrutement),
     db: Session = Depends(get_db),
 ):
     """Create a new recruitment campaign."""
@@ -107,6 +114,7 @@ async def update_campagne(
     department: DepartmentDep,
     annee: int,
     campagne: CampagneUpdate,
+    user: UserDB = Depends(require_edit_recrutement),
     db: Session = Depends(get_db),
 ):
     """Update a campaign."""
@@ -120,6 +128,7 @@ async def update_campagne(
 async def delete_campagne(
     department: DepartmentDep,
     annee: int,
+    user: UserDB = Depends(require_edit_recrutement),
     db: Session = Depends(get_db),
 ):
     """Delete a campaign and all its candidates."""
@@ -134,6 +143,7 @@ async def delete_campagne(
 async def list_candidats(
     department: DepartmentDep,
     annee: int,
+    user: UserDB = Depends(require_view_recrutement),
     statut: Optional[str] = Query(None, pattern="^(en_attente|propose|accepte|refuse|confirme|desiste)$"),
     type_bac: Optional[str] = None,
     skip: int = Query(0, ge=0),
@@ -161,6 +171,7 @@ async def create_candidat(
     department: DepartmentDep,
     annee: int,
     candidat: CandidatCreate,
+    user: UserDB = Depends(require_edit_recrutement),
     db: Session = Depends(get_db),
 ):
     """Add a candidate to a campaign."""
@@ -174,6 +185,7 @@ async def create_candidats_bulk(
     department: DepartmentDep,
     annee: int,
     data: CandidatBulkCreate,
+    user: UserDB = Depends(require_edit_recrutement),
     db: Session = Depends(get_db),
 ):
     """Add multiple candidates to a campaign."""
@@ -186,6 +198,7 @@ async def create_candidats_bulk(
 async def get_candidat(
     department: DepartmentDep,
     candidat_id: int,
+    user: UserDB = Depends(require_view_recrutement),
     db: Session = Depends(get_db),
 ):
     """Get a specific candidate."""
@@ -200,6 +213,7 @@ async def update_candidat(
     department: DepartmentDep,
     candidat_id: int,
     candidat: CandidatUpdate,
+    user: UserDB = Depends(require_edit_recrutement),
     db: Session = Depends(get_db),
 ):
     """Update a candidate."""
@@ -213,6 +227,7 @@ async def update_candidat(
 async def delete_candidat(
     department: DepartmentDep,
     candidat_id: int,
+    user: UserDB = Depends(require_edit_recrutement),
     db: Session = Depends(get_db),
 ):
     """Delete a candidate."""
@@ -226,6 +241,7 @@ async def delete_candidat(
 @router.post("/import/csv", response_model=ImportParcoursupResult)
 async def import_parcoursup_csv(
     department: DepartmentDep,
+    user: UserDB = Depends(require_import),
     file: UploadFile = File(..., description="Parcoursup CSV export file"),
     annee: int = Query(..., description="Année de recrutement"),
     db: Session = Depends(get_db),
@@ -253,6 +269,7 @@ async def import_parcoursup_csv(
 @router.post("/import/excel", response_model=ImportParcoursupResult)
 async def import_parcoursup_excel(
     department: DepartmentDep,
+    user: UserDB = Depends(require_import),
     file: UploadFile = File(..., description="Parcoursup Excel file"),
     annee: int = Query(..., description="Année de recrutement"),
     db: Session = Depends(get_db),
@@ -282,6 +299,7 @@ async def save_stats_direct(
     department: DepartmentDep,
     annee: int,
     stats_input: ParcoursupStatsInput,
+    user: UserDB = Depends(require_edit_recrutement),
     db: Session = Depends(get_db),
 ):
     """
@@ -311,6 +329,7 @@ async def save_stats_direct(
 async def get_stats(
     department: DepartmentDep,
     annee: int,
+    user: UserDB = Depends(require_view_recrutement),
     db: Session = Depends(get_db),
 ):
     """Get Parcoursup statistics for a year."""
@@ -323,6 +342,7 @@ async def get_stats(
 @router.get("/evolution", response_model=dict)
 async def get_evolution(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_recrutement),
     limit: int = Query(5, le=10),
     db: Session = Depends(get_db),
 ):
@@ -335,6 +355,7 @@ async def get_evolution(
 @router.get("/indicators", response_model=RecrutementIndicators)
 async def get_recrutement_indicators(
     department: DepartmentDep,
+    user: UserDB = Depends(require_view_recrutement),
     annee: Optional[int] = Query(None, description="Année de recrutement"),
     db: Session = Depends(get_db),
 ):

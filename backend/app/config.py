@@ -41,7 +41,15 @@ class Settings(BaseSettings):
     # JWT Auth
     secret_key: str = "your-secret-key-change-in-production"
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: int = 480  # 8 hours
+    
+    # CAS Configuration
+    cas_server_url: str = "https://sso.univ-artois.fr/cas"
+    cas_service_url: str = "http://localhost:8000/api/auth/cas/callback"
+    cas_use_mock: bool = True  # Set to False in production
+    
+    # Frontend URL (for redirects)
+    frontend_url: str = "http://localhost:5173"
     
     # File Upload
     upload_dir: str = "./uploads"
