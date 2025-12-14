@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import FileUpload, { FileType } from '../components/FileUpload'
 import { uploadApi } from '../services/api'
+import { useDepartment } from '../contexts/DepartmentContext'
 
 interface UploadedFile {
   filename: string
@@ -31,6 +32,7 @@ const fileTypeOptions: { value: FileType; label: string; description: string }[]
 ]
 
 export default function UploadPage() {
+  const { department } = useDepartment()
   const [activeTab, setActiveTab] = useState<'upload' | 'files'>('upload')
   const [selectedTypes, setSelectedTypes] = useState<FileType[]>(['budget', 'edt', 'parcoursup'])
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -39,16 +41,16 @@ export default function UploadPage() {
 
   // Fetch uploaded files
   const { data: filesData, isLoading: filesLoading, refetch: refetchFiles } = useQuery({
-    queryKey: ['uploaded-files'],
-    queryFn: () => uploadApi.listFiles(),
+    queryKey: ['uploaded-files', department],
+    queryFn: () => uploadApi.listFiles(department),
   })
 
   // Upload mutation
   const uploadMutation = useMutation({
     mutationFn: ({ file, type, description }: { file: File; type: FileType; description?: string }) =>
-      uploadApi.uploadFile(file, type, description),
+      uploadApi.uploadFile(department, file, type, description),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['uploaded-files'] })
+      queryClient.invalidateQueries({ queryKey: ['uploaded-files', department] })
       setNotification({ type: 'success', message: 'Fichier uploadé avec succès!' })
       setTimeout(() => setNotification(null), 5000)
     },
@@ -64,9 +66,9 @@ export default function UploadPage() {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: ({ filename, type }: { filename: string; type: string }) =>
-      uploadApi.deleteFile(filename, type),
+      uploadApi.deleteFile(department, filename, type),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['uploaded-files'] })
+      queryClient.invalidateQueries({ queryKey: ['uploaded-files', department] })
       setNotification({ type: 'success', message: 'Fichier supprimé' })
       setTimeout(() => setNotification(null), 3000)
     },

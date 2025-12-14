@@ -5,6 +5,7 @@ from typing import Optional
 import os
 from datetime import datetime
 
+from app.api.deps import DepartmentDep
 from app.config import get_settings
 
 router = APIRouter()
@@ -13,6 +14,7 @@ settings = get_settings()
 
 @router.post("/file")
 async def upload_file(
+    department: DepartmentDep,
     file: UploadFile = File(..., description="File to upload"),
     type: str = Form(..., description="Type of data: budget, edt, parcoursup, etudiants, notes, other"),
     description: Optional[str] = Form(None, description="File description"),
@@ -59,8 +61,8 @@ async def upload_file(
             detail=f"Fichier trop volumineux. Taille max: {settings.max_upload_size / 1024 / 1024}MB"
         )
     
-    # Create upload directory if needed
-    upload_dir = os.path.join(settings.upload_dir, type)
+    # Create upload directory if needed (scoped by department)
+    upload_dir = os.path.join(settings.upload_dir, department, type)
     os.makedirs(upload_dir, exist_ok=True)
     
     # Generate unique filename
@@ -76,6 +78,7 @@ async def upload_file(
         "success": True,
         "filename": safe_filename,
         "type": type,
+        "department": department,
         "size": len(content),
         "path": filepath,
     }
@@ -83,13 +86,14 @@ async def upload_file(
 
 @router.get("/files")
 async def list_uploaded_files(
+    department: DepartmentDep,
     type: Optional[str] = None,
 ):
     """
-    List uploaded files.
+    List uploaded files for a department.
     """
     files = []
-    base_dir = settings.upload_dir
+    base_dir = os.path.join(settings.upload_dir, department)
     
     if not os.path.exists(base_dir):
         return {"files": []}
@@ -114,11 +118,11 @@ async def list_uploaded_files(
 
 
 @router.delete("/file/{type}/{filename}")
-async def delete_file(type: str, filename: str):
+async def delete_file(department: DepartmentDep, type: str, filename: str):
     """
     Delete an uploaded file.
     """
-    filepath = os.path.join(settings.upload_dir, type, filename)
+    filepath = os.path.join(settings.upload_dir, department, type, filename)
     
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Fichier non trouvé")
@@ -131,13 +135,13 @@ async def delete_file(type: str, filename: str):
 
 
 @router.get("/download/{type}/{filename}")
-async def download_file(type: str, filename: str):
+async def download_file(department: DepartmentDep, type: str, filename: str):
     """
     Download an uploaded file.
     """
     from fastapi.responses import FileResponse
     
-    filepath = os.path.join(settings.upload_dir, type, filename)
+    filepath = os.path.join(settings.upload_dir, department, type, filename)
     
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Fichier non trouvé")

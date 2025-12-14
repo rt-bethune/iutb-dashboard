@@ -7,6 +7,7 @@ from datetime import date
 
 from app.database import get_db
 from app.crud import budget_crud
+from app.api.deps import DepartmentDep
 from app.schemas.budget import (
     BudgetAnnuelCreate,
     BudgetAnnuelUpdate,
@@ -31,15 +32,16 @@ router = APIRouter()
 
 @router.get("/years", response_model=list[BudgetAnnuelSummary])
 async def list_budget_years(
+    department: DepartmentDep,
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, le=100),
 ):
     """List all budget years."""
-    budgets = budget_crud.get_all_budgets(db, skip=skip, limit=limit)
+    budgets = budget_crud.get_all_budgets(db, department, skip=skip, limit=limit)
     result = []
     for b in budgets:
-        stats = budget_crud.get_budget_stats(db, b.annee)
+        stats = budget_crud.get_budget_stats(db, department, b.annee)
         result.append(BudgetAnnuelSummary(
             id=b.id,
             annee=b.annee,
@@ -53,15 +55,16 @@ async def list_budget_years(
 
 @router.get("/year/{annee}", response_model=BudgetAnnuelResponse)
 async def get_budget_year(
+    department: DepartmentDep,
     annee: int,
     db: Session = Depends(get_db),
 ):
     """Get budget details for a specific year."""
-    budget = budget_crud.get_budget_annuel(db, annee)
+    budget = budget_crud.get_budget_annuel(db, department, annee)
     if not budget:
         raise HTTPException(status_code=404, detail=f"Budget {annee} non trouvé")
     
-    stats = budget_crud.get_budget_stats(db, annee)
+    stats = budget_crud.get_budget_stats(db, department, annee)
     
     lignes = [
         LigneBudgetResponse(
@@ -94,38 +97,41 @@ async def get_budget_year(
 
 @router.post("/year", response_model=BudgetAnnuelResponse)
 async def create_budget_year(
+    department: DepartmentDep,
     budget: BudgetAnnuelCreate,
     db: Session = Depends(get_db),
 ):
     """Create a new budget year."""
-    existing = budget_crud.get_budget_annuel(db, budget.annee)
+    existing = budget_crud.get_budget_annuel(db, department, budget.annee)
     if existing:
         raise HTTPException(status_code=400, detail=f"Budget {budget.annee} existe déjà")
     
-    db_budget = budget_crud.create_budget_annuel(db, budget)
-    return await get_budget_year(db_budget.annee, db)
+    db_budget = budget_crud.create_budget_annuel(db, department, budget)
+    return await get_budget_year(department, db_budget.annee, db)
 
 
 @router.put("/year/{annee}", response_model=BudgetAnnuelResponse)
 async def update_budget_year(
+    department: DepartmentDep,
     annee: int,
     budget: BudgetAnnuelUpdate,
     db: Session = Depends(get_db),
 ):
     """Update a budget year."""
-    db_budget = budget_crud.update_budget_annuel(db, annee, budget)
+    db_budget = budget_crud.update_budget_annuel(db, department, annee, budget)
     if not db_budget:
         raise HTTPException(status_code=404, detail=f"Budget {annee} non trouvé")
-    return await get_budget_year(annee, db)
+    return await get_budget_year(department, annee, db)
 
 
 @router.delete("/year/{annee}")
 async def delete_budget_year(
+    department: DepartmentDep,
     annee: int,
     db: Session = Depends(get_db),
 ):
     """Delete a budget year and all related data."""
-    if not budget_crud.delete_budget_annuel(db, annee):
+    if not budget_crud.delete_budget_annuel(db, department, annee):
         raise HTTPException(status_code=404, detail=f"Budget {annee} non trouvé")
     return {"message": f"Budget {annee} supprimé"}
 
@@ -134,12 +140,13 @@ async def delete_budget_year(
 
 @router.post("/year/{annee}/ligne", response_model=LigneBudgetResponse)
 async def create_ligne_budget(
+    department: DepartmentDep,
     annee: int,
     ligne: LigneBudgetCreate,
     db: Session = Depends(get_db),
 ):
     """Add a budget line to a year."""
-    budget = budget_crud.get_or_create_budget_annuel(db, annee)
+    budget = budget_crud.get_or_create_budget_annuel(db, department, annee)
     
     # Check if category already exists
     existing = budget_crud.get_ligne_by_categorie(db, budget.id, ligne.categorie.value)
@@ -163,6 +170,7 @@ async def create_ligne_budget(
 
 @router.put("/ligne/{ligne_id}", response_model=LigneBudgetResponse)
 async def update_ligne_budget(
+    department: DepartmentDep,
     ligne_id: int,
     ligne: LigneBudgetUpdate,
     db: Session = Depends(get_db),
@@ -185,6 +193,7 @@ async def update_ligne_budget(
 
 @router.delete("/ligne/{ligne_id}")
 async def delete_ligne_budget(
+    department: DepartmentDep,
     ligne_id: int,
     db: Session = Depends(get_db),
 ):
@@ -198,6 +207,7 @@ async def delete_ligne_budget(
 
 @router.get("/year/{annee}/depenses", response_model=list[DepenseResponse])
 async def list_depenses(
+    department: DepartmentDep,
     annee: int,
     categorie: Optional[CategorieDepense] = None,
     statut: Optional[str] = Query(None, pattern="^(prevue|engagee|payee)$"),
@@ -206,7 +216,7 @@ async def list_depenses(
     db: Session = Depends(get_db),
 ):
     """List expenses for a year."""
-    budget = budget_crud.get_budget_annuel(db, annee)
+    budget = budget_crud.get_budget_annuel(db, department, annee)
     if not budget:
         raise HTTPException(status_code=404, detail=f"Budget {annee} non trouvé")
     
@@ -235,12 +245,13 @@ async def list_depenses(
 
 @router.post("/year/{annee}/depense", response_model=DepenseResponse)
 async def create_depense(
+    department: DepartmentDep,
     annee: int,
     depense: DepenseCreate,
     db: Session = Depends(get_db),
 ):
     """Create a new expense."""
-    budget = budget_crud.get_or_create_budget_annuel(db, annee)
+    budget = budget_crud.get_or_create_budget_annuel(db, department, annee)
     db_depense = budget_crud.create_depense(db, budget.id, depense)
     
     return DepenseResponse(
@@ -257,6 +268,7 @@ async def create_depense(
 
 @router.put("/depense/{depense_id}", response_model=DepenseResponse)
 async def update_depense(
+    department: DepartmentDep,
     depense_id: int,
     depense: DepenseUpdate,
     db: Session = Depends(get_db),
@@ -280,6 +292,7 @@ async def update_depense(
 
 @router.delete("/depense/{depense_id}")
 async def delete_depense(
+    department: DepartmentDep,
     depense_id: int,
     db: Session = Depends(get_db),
 ):
@@ -293,6 +306,7 @@ async def delete_depense(
 
 @router.post("/import", response_model=ImportResult)
 async def import_budget_file(
+    department: DepartmentDep,
     file: UploadFile = File(..., description="Budget Excel file"),
     annee: int = Query(..., description="Année budgétaire"),
     db: Session = Depends(get_db),
@@ -309,7 +323,7 @@ async def import_budget_file(
         )
     
     content = await file.read()
-    result = budget_crud.import_budget_from_excel(db, content, annee)
+    result = budget_crud.import_budget_from_excel(db, department, content, annee)
     
     if not result.success:
         raise HTTPException(status_code=400, detail=result.message)
@@ -321,6 +335,7 @@ async def import_budget_file(
 
 @router.get("/indicators", response_model=BudgetIndicators)
 async def get_budget_indicators(
+    department: DepartmentDep,
     annee: Optional[int] = Query(None, description="Année budgétaire"),
     db: Session = Depends(get_db),
 ):
@@ -332,12 +347,12 @@ async def get_budget_indicators(
     budget = None
     
     if annee is not None:
-        budget = budget_crud.get_budget_annuel(db, annee)
+        budget = budget_crud.get_budget_annuel(db, department, annee)
     else:
         # Try current year first, then get latest available
-        budget = budget_crud.get_budget_annuel(db, date.today().year)
+        budget = budget_crud.get_budget_annuel(db, department, date.today().year)
         if not budget:
-            budget = budget_crud.get_latest_budget(db)
+            budget = budget_crud.get_latest_budget(db, department)
     
     if not budget:
         # Return empty indicators
@@ -357,7 +372,7 @@ async def get_budget_indicators(
         )
     
     annee = budget.annee
-    stats = budget_crud.get_budget_stats(db, annee)
+    stats = budget_crud.get_budget_stats(db, department, annee)
     evolution = budget_crud.get_evolution_mensuelle(db, budget.id)
     
     # Get top expenses

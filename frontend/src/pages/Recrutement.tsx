@@ -10,23 +10,25 @@ import StatCard from '@/components/StatCard'
 import ChartContainer from '@/components/ChartContainer'
 import DataTable from '@/components/DataTable'
 import { adminRecrutementApi } from '@/services/api'
+import { useDepartment } from '../contexts/DepartmentContext'
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
 
 export default function Recrutement() {
+  const { department } = useDepartment()
   const [selectedYear, setSelectedYear] = useState<number | undefined>(undefined)
 
   // Fetch available years (campagnes)
   const { data: campagnes } = useQuery({
-    queryKey: ['recrutement', 'campagnes'],
-    queryFn: () => adminRecrutementApi.getCampagnes(),
+    queryKey: ['recrutement', 'campagnes', department],
+    queryFn: () => adminRecrutementApi.getCampagnes(department),
   })
 
   const availableYears = (campagnes ?? []).map((c: { annee: number }) => c.annee).sort((a: number, b: number) => b - a)
 
   const { data: indicators, isLoading } = useQuery({
-    queryKey: ['recrutement', 'indicators', selectedYear],
-    queryFn: () => adminRecrutementApi.getIndicators(selectedYear),
+    queryKey: ['recrutement', 'indicators', department, selectedYear],
+    queryFn: () => adminRecrutementApi.getIndicators(department, selectedYear),
   })
 
   if (isLoading) {

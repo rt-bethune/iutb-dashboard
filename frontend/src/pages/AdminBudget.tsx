@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminBudgetApi } from '../services/api'
+import { useDepartment } from '../contexts/DepartmentContext'
 import { 
   Plus, Trash2, Upload, Edit2, FileSpreadsheet, 
   TrendingUp, TrendingDown, DollarSign, AlertCircle
@@ -39,6 +40,7 @@ const CATEGORIES = [
 ]
 
 export default function AdminBudget() {
+  const { department } = useDepartment()
   const queryClient = useQueryClient()
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
   const [showNewYearForm, setShowNewYearForm] = useState(false)
@@ -56,28 +58,29 @@ export default function AdminBudget() {
 
   // Queries
   const { data: years = [], isLoading: yearsLoading } = useQuery({
-    queryKey: ['budgetYears'],
-    queryFn: adminBudgetApi.getYears,
+    queryKey: ['budgetYears', department],
+    queryFn: () => adminBudgetApi.getYears(department),
   })
 
   const { data: yearData } = useQuery({
-    queryKey: ['budgetYear', selectedYear],
-    queryFn: () => adminBudgetApi.getYear(selectedYear),
+    queryKey: ['budgetYear', department, selectedYear],
+    queryFn: () => adminBudgetApi.getYear(department, selectedYear),
     enabled: !!selectedYear,
   })
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { data: depenses = [], isLoading: depensesLoading } = useQuery({
-    queryKey: ['budgetDepenses', selectedYear],
-    queryFn: () => adminBudgetApi.getDepenses(selectedYear, { limit: 100 }),
+    queryKey: ['budgetDepenses', department, selectedYear],
+    queryFn: () => adminBudgetApi.getDepenses(department, selectedYear, { limit: 100 }),
     enabled: !!selectedYear,
   })
 
   // Mutations
   const createYearMutation = useMutation({
-    mutationFn: adminBudgetApi.createYear,
+    mutationFn: (data: { annee: number; budget_total: number; previsionnel: number }) => 
+      adminBudgetApi.createYear(department, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['budgetYears'] })
+      queryClient.invalidateQueries({ queryKey: ['budgetYears', department] })
       setShowNewYearForm(false)
       setNewYear({ annee: new Date().getFullYear() + 1, budget_total: 0, previsionnel: 0 })
     },
@@ -85,16 +88,16 @@ export default function AdminBudget() {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const deleteYearMutation = useMutation({
-    mutationFn: adminBudgetApi.deleteYear,
+    mutationFn: (annee: number) => adminBudgetApi.deleteYear(department, annee),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['budgetYears'] })
+      queryClient.invalidateQueries({ queryKey: ['budgetYears', department] })
     },
   })
 
   const createLigneMutation = useMutation({
-    mutationFn: (data: typeof newLigne) => adminBudgetApi.createLigne(selectedYear, data),
+    mutationFn: (data: typeof newLigne) => adminBudgetApi.createLigne(department, selectedYear, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['budgetYear', selectedYear] })
+      queryClient.invalidateQueries({ queryKey: ['budgetYear', department, selectedYear] })
       setShowNewLigneForm(false)
       setNewLigne({ categorie: 'fonctionnement', budget_initial: 0, budget_modifie: 0, engage: 0, paye: 0 })
     },
@@ -103,43 +106,43 @@ export default function AdminBudget() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const updateLigneMutation = useMutation({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mutationFn: ({ id, data }: { id: number; data: any }) => adminBudgetApi.updateLigne(id, data),
+    mutationFn: ({ id, data }: { id: number; data: any }) => adminBudgetApi.updateLigne(department, id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['budgetYear', selectedYear] })
+      queryClient.invalidateQueries({ queryKey: ['budgetYear', department, selectedYear] })
       setEditingLigne(null)
     },
   })
 
   const deleteLigneMutation = useMutation({
-    mutationFn: adminBudgetApi.deleteLigne,
+    mutationFn: (ligneId: number) => adminBudgetApi.deleteLigne(department, ligneId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['budgetYear', selectedYear] })
+      queryClient.invalidateQueries({ queryKey: ['budgetYear', department, selectedYear] })
     },
   })
 
   const createDepenseMutation = useMutation({
-    mutationFn: (data: typeof newDepense) => adminBudgetApi.createDepense(selectedYear, data),
+    mutationFn: (data: typeof newDepense) => adminBudgetApi.createDepense(department, selectedYear, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['budgetDepenses', selectedYear] })
-      queryClient.invalidateQueries({ queryKey: ['budgetYear', selectedYear] })
+      queryClient.invalidateQueries({ queryKey: ['budgetDepenses', department, selectedYear] })
+      queryClient.invalidateQueries({ queryKey: ['budgetYear', department, selectedYear] })
       setShowNewDepenseForm(false)
       setNewDepense({ libelle: '', montant: 0, categorie: 'fonctionnement', date_depense: new Date().toISOString().split('T')[0], fournisseur: '', statut: 'engagee' })
     },
   })
 
   const deleteDepenseMutation = useMutation({
-    mutationFn: adminBudgetApi.deleteDepense,
+    mutationFn: (depenseId: number) => adminBudgetApi.deleteDepense(department, depenseId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['budgetDepenses', selectedYear] })
-      queryClient.invalidateQueries({ queryKey: ['budgetYear', selectedYear] })
+      queryClient.invalidateQueries({ queryKey: ['budgetDepenses', department, selectedYear] })
+      queryClient.invalidateQueries({ queryKey: ['budgetYear', department, selectedYear] })
     },
   })
 
   const importMutation = useMutation({
-    mutationFn: ({ file, annee }: { file: File; annee: number }) => adminBudgetApi.importFile(file, annee),
+    mutationFn: ({ file, annee }: { file: File; annee: number }) => adminBudgetApi.importFile(department, file, annee),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['budgetYears'] })
-      queryClient.invalidateQueries({ queryKey: ['budgetYear', selectedYear] })
+      queryClient.invalidateQueries({ queryKey: ['budgetYears', department] })
+      queryClient.invalidateQueries({ queryKey: ['budgetYear', department, selectedYear] })
       setShowImportModal(false)
       setImportFile(null)
       alert(`Import réussi: ${data.lignes_importees} lignes importées`)

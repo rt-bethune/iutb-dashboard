@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
-  Settings, Database, RefreshCw, Trash2, Play, 
-  CheckCircle, XCircle, AlertCircle, Clock, 
-  Server, HardDrive, Activity, FileText,
-  Plus, Edit, TestTube, Loader2
+  Settings, Database, Trash2, Play, 
+  CheckCircle, AlertCircle, Clock, 
+  Server, HardDrive, Activity,
+  Loader2, X
 } from 'lucide-react'
 import StatCard from '@/components/StatCard'
 import { adminApi } from '@/services/api'
@@ -37,31 +37,27 @@ interface CacheStats {
 interface ScheduledJob {
   id: string
   name: string
+  description?: string
+  schedule: string
   next_run?: string
   enabled: boolean
 }
 
-interface ActivityLog {
-  id: string
-  timestamp: string
-  action: string
-  details?: string
-  status: string
-  source?: string
-}
-
 interface SystemSettings {
   dashboard_title: string
-  department_name: string
   academic_year: string
   cache_enabled: boolean
   cache_ttl_default: number
   items_per_page: number
+  default_chart_type: string
+  date_format: string
+  email_notifications: boolean
+  notification_email?: string
 }
 
 export default function Admin() {
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'overview' | 'sources' | 'cache' | 'jobs' | 'settings' | 'logs'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'sources' | 'cache' | 'jobs' | 'settings'>('overview')
 
   // Queries
   const { data: dashboard, isLoading: loadingDashboard } = useQuery({
@@ -84,35 +80,50 @@ export default function Admin() {
     queryFn: () => adminApi.getJobs(),
   })
 
-  const { data: logs } = useQuery({
-    queryKey: ['admin', 'logs'],
-    queryFn: () => adminApi.getLogs(50),
-  })
-
   const { data: settings } = useQuery({
     queryKey: ['admin', 'settings'],
     queryFn: adminApi.getSettings,
   })
 
-  // Mutations
-  const syncMutation = useMutation({
-    mutationFn: adminApi.syncSource,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin'] })
-    },
-  })
+  // Toast state
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [runningJobId, setRunningJobId] = useState<string | null>(null)
 
+  // Auto-hide toast after 4 seconds
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000)
+      return () => clearTimeout(timer)
+    }
+  }, [toast])
+
+  // Mutations
   const clearCacheMutation = useMutation({
     mutationFn: adminApi.clearCache,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'cache'] })
+      setToast({ message: 'Cache vidé avec succès', type: 'success' })
+    },
+    onError: () => {
+      setToast({ message: 'Erreur lors du vidage du cache', type: 'error' })
     },
   })
 
   const runJobMutation = useMutation({
-    mutationFn: adminApi.runJob,
-    onSuccess: () => {
+    mutationFn: async (jobId: string) => {
+      setRunningJobId(jobId)
+      return adminApi.runJob(jobId)
+    },
+    onSuccess: (_data, jobId) => {
       queryClient.invalidateQueries({ queryKey: ['admin'] })
+      const job = jobs?.find((j: ScheduledJob) => j.id === jobId)
+      setToast({ message: `Job "${job?.name || jobId}" exécuté avec succès`, type: 'success' })
+      setRunningJobId(null)
+    },
+    onError: (_error, jobId) => {
+      const job = jobs?.find((j: ScheduledJob) => j.id === jobId)
+      setToast({ message: `Erreur lors de l'exécution du job "${job?.name || jobId}"`, type: 'error' })
+      setRunningJobId(null)
     },
   })
 
@@ -133,7 +144,6 @@ export default function Admin() {
     { id: 'cache', label: 'Cache', icon: HardDrive },
     { id: 'jobs', label: 'Jobs planifiés', icon: Clock },
     { id: 'settings', label: 'Paramètres', icon: Settings },
-    { id: 'logs', label: 'Logs', icon: FileText },
   ]
 
   return (
@@ -173,11 +183,7 @@ export default function Admin() {
       )}
 
       {activeTab === 'sources' && (
-        <SourcesTab 
-          sources={Array.isArray(sources) ? sources : []} 
-          onSync={(id) => syncMutation.mutate(id)}
-          isSyncing={syncMutation.isPending}
-        />
+        <SourcesTab sources={Array.isArray(sources) ? sources : []} />
       )}
 
       {activeTab === 'cache' && (
@@ -192,7 +198,7 @@ export default function Admin() {
         <JobsTab 
           jobs={jobs || []} 
           onRun={(id) => runJobMutation.mutate(id)}
-          isRunning={runJobMutation.isPending}
+          runningJobId={runningJobId}
         />
       )}
 
@@ -204,8 +210,26 @@ export default function Admin() {
         />
       )}
 
-      {activeTab === 'logs' && (
-        <LogsTab logs={logs || []} />
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg z-50 ${
+          toast.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+        }`}>
+          {toast.type === 'success' ? (
+            <CheckCircle className="w-5 h-5 text-green-600" />
+          ) : (
+            <AlertCircle className="w-5 h-5 text-red-600" />
+          )}
+          <span className={toast.type === 'success' ? 'text-green-800' : 'text-red-800'}>
+            {toast.message}
+          </span>
+          <button 
+            onClick={() => setToast(null)}
+            className={`ml-2 ${toast.type === 'success' ? 'text-green-600 hover:text-green-800' : 'text-red-600 hover:text-red-800'}`}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       )}
     </div>
   )
@@ -218,21 +242,22 @@ function OverviewTab({ dashboard }: { dashboard: any }) {
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Sources actives"
-          value={`${dashboard?.active_sources ?? 0}/${dashboard?.total_sources ?? 0}`}
+          title="Sources de données"
+          value={`${dashboard?.active_sources ?? 0}/${dashboard?.total_sources ?? 0} actives`}
           icon={<Database className="w-6 h-6" />}
           color="blue"
         />
         <StatCard
-          title="Cache"
+          title="Cache Redis"
           value={dashboard?.cache_stats?.connected ? 'Connecté' : 'Déconnecté'}
-          subtitle={`${dashboard?.cache_stats?.keys ?? 0} clés`}
+          subtitle={`${dashboard?.cache_stats?.keys ?? 0} clés en cache`}
           icon={<HardDrive className="w-6 h-6" />}
           color={dashboard?.cache_stats?.connected ? 'green' : 'red'}
         />
         <StatCard
           title="Jobs planifiés"
           value={dashboard?.scheduled_jobs ?? 0}
+          subtitle="Tâches automatiques"
           icon={<Clock className="w-6 h-6" />}
           color="blue"
         />
@@ -244,88 +269,54 @@ function OverviewTab({ dashboard }: { dashboard: any }) {
         />
       </div>
 
-      {/* Recent activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent syncs */}
+      {/* Cache details */}
+      {dashboard?.cache_stats?.connected && (
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Dernières synchronisations</h3>
-          <div className="space-y-3">
-            {dashboard?.recent_syncs?.length > 0 ? (
-              dashboard.recent_syncs.map((sync: any, i: number) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    {sync.success ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-red-500" />
-                    )}
-                    <div>
-                      <p className="font-medium text-gray-900">{sync.source_name}</p>
-                      <p className="text-sm text-gray-500">{sync.records_synced} enregistrements</p>
-                    </div>
-                  </div>
-                  <span className="text-sm text-gray-500">{sync.duration_seconds}s</span>
-                </div>
-              ))
-            ) : (
-              <p className="text-gray-500 text-sm">Aucune synchronisation récente</p>
-            )}
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance du cache</h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center p-4 bg-gray-50 rounded-lg">
+              <p className="text-2xl font-bold text-blue-600">
+                {((dashboard.cache_stats.hit_rate ?? 0) * 100).toFixed(1)}%
+              </p>
+              <p className="text-sm text-gray-500">Taux de hit</p>
+            </div>
+            <div className="text-center p-4 bg-gray-50 rounded-lg">
+              <p className="text-2xl font-bold text-green-600">{dashboard.cache_stats.hits ?? 0}</p>
+              <p className="text-sm text-gray-500">Hits</p>
+            </div>
+            <div className="text-center p-4 bg-gray-50 rounded-lg">
+              <p className="text-2xl font-bold text-gray-600">{dashboard.cache_stats.memory_used ?? 'N/A'}</p>
+              <p className="text-sm text-gray-500">Mémoire utilisée</p>
+            </div>
           </div>
         </div>
-
-        {/* Recent logs */}
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Activité récente</h3>
-          <div className="space-y-2">
-            {dashboard?.recent_logs?.length > 0 ? (
-              dashboard.recent_logs.map((log: ActivityLog) => (
-                <div key={log.id} className="flex items-start gap-3 p-2">
-                  <StatusIcon status={log.status} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{log.action}</p>
-                    {log.details && (
-                      <p className="text-sm text-gray-500 truncate">{log.details}</p>
-                    )}
-                  </div>
-                  <span className="text-xs text-gray-400">
-                    {new Date(log.timestamp).toLocaleTimeString('fr-FR')}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <p className="text-gray-500 text-sm">Aucune activité récente</p>
-            )}
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   )
 }
 
-// Sources Tab
-function SourcesTab({ 
-  sources, 
-  onSync, 
-  isSyncing 
-}: { 
-  sources: DataSource[]
-  onSync: (id: string) => void
-  isSyncing: boolean
-}) {
+// Sources Tab - Read-only view of configured sources
+function SourcesTab({ sources }: { sources: DataSource[] }) {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-gray-900">Sources de données</h3>
-        <button className="btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" />
-          Ajouter une source
-        </button>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Sources de données</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Configuration des sources de données pour l'importation
+          </p>
+        </div>
       </div>
 
       <div className="grid gap-4">
-        {sources.map(source => (
-          <div key={source.id} className="card">
-            <div className="flex items-start justify-between">
+        {sources.length === 0 ? (
+          <div className="card text-center py-8">
+            <Database className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500">Aucune source de données configurée</p>
+          </div>
+        ) : (
+          sources.map(source => (
+            <div key={source.id} className="card">
               <div className="flex items-start gap-4">
                 <div className={`p-3 rounded-lg ${
                   source.status === 'active' ? 'bg-green-100' :
@@ -336,7 +327,7 @@ function SourcesTab({
                     source.status === 'error' ? 'text-red-600' : 'text-gray-600'
                   }`} />
                 </div>
-                <div>
+                <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h4 className="font-semibold text-gray-900">{source.name}</h4>
                     <span className={`px-2 py-0.5 text-xs rounded-full ${
@@ -344,16 +335,22 @@ function SourcesTab({
                       source.status === 'error' ? 'bg-red-100 text-red-700' :
                       'bg-gray-100 text-gray-700'
                     }`}>
-                      {source.status}
+                      {source.status === 'active' ? 'Actif' : 
+                       source.status === 'error' ? 'Erreur' : 'Inactif'}
                     </span>
+                    {!source.enabled && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-yellow-100 text-yellow-700">
+                        Désactivé
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-500 mt-1">{source.description}</p>
                   <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                    <span>Type: {source.type}</span>
-                    {source.last_sync && (
-                      <span>Dernière sync: {new Date(source.last_sync).toLocaleString('fr-FR')}</span>
+                    <span className="capitalize">Type: {source.type}</span>
+                    {source.auto_sync && (
+                      <span>Sync auto: toutes les {source.sync_interval_hours}h</span>
                     )}
-                    {source.records_count !== undefined && (
+                    {source.records_count !== undefined && source.records_count > 0 && (
                       <span>{source.records_count} enregistrements</span>
                     )}
                   </div>
@@ -362,36 +359,9 @@ function SourcesTab({
                   )}
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => onSync(source.id)}
-                  disabled={isSyncing}
-                  className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  title="Synchroniser"
-                >
-                  {isSyncing ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-5 h-5" />
-                  )}
-                </button>
-                <button 
-                  className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                  title="Tester la connexion"
-                >
-                  <TestTube className="w-5 h-5" />
-                </button>
-                <button 
-                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                  title="Modifier"
-                >
-                  <Edit className="w-5 h-5" />
-                </button>
-              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   )
@@ -475,59 +445,81 @@ function CacheTab({
 function JobsTab({ 
   jobs, 
   onRun, 
-  isRunning 
+  runningJobId 
 }: { 
   jobs: ScheduledJob[]
   onRun: (id: string) => void
-  isRunning: boolean
+  runningJobId: string | null
 }) {
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">Jobs planifiés</h3>
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900">Jobs planifiés</h3>
+        <p className="text-sm text-gray-500 mt-1">
+          Tâches automatiques de rafraîchissement des données
+        </p>
+      </div>
       
       <div className="card overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Job</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Fréquence</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Prochaine exécution</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">État</th>
               <th className="px-4 py-3 text-right text-sm font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {jobs.map(job => (
-              <tr key={job.id}>
+            {jobs.map(job => {
+              const isThisJobRunning = runningJobId === job.id
+              const isAnyJobRunning = runningJobId !== null
+              return (
+              <tr key={job.id} className={`hover:bg-gray-50 ${isThisJobRunning ? 'bg-blue-50' : ''}`}>
                 <td className="px-4 py-3">
                   <div className="font-medium text-gray-900">{job.name}</div>
-                  <div className="text-sm text-gray-500">{job.id}</div>
+                  {job.description && (
+                    <div className="text-sm text-gray-500">{job.description}</div>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-500">
+                  {job.schedule}
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-500">
                   {job.next_run ? new Date(job.next_run).toLocaleString('fr-FR') : '-'}
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`px-2 py-1 text-xs rounded-full ${
-                    job.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                  }`}>
-                    {job.enabled ? 'Actif' : 'Inactif'}
-                  </span>
+                  {isThisJobRunning ? (
+                    <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700 flex items-center gap-1 w-fit">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      En cours...
+                    </span>
+                  ) : (
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      job.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {job.enabled ? 'Actif' : 'Inactif'}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button
                     onClick={() => onRun(job.id)}
-                    disabled={isRunning}
-                    className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="Exécuter maintenant"
+                    disabled={isAnyJobRunning || !job.enabled}
+                    className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={isThisJobRunning ? 'Exécution en cours...' : 'Exécuter maintenant'}
                   >
-                    {isRunning ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
+                    {isThisJobRunning ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
                     ) : (
                       <Play className="w-5 h-5" />
                     )}
                   </button>
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -547,11 +539,14 @@ function SettingsTab({
 }) {
   const [formData, setFormData] = useState<SystemSettings>(settings || {
     dashboard_title: 'Dashboard Département',
-    department_name: 'Département RT',
     academic_year: '2024-2025',
     cache_enabled: true,
     cache_ttl_default: 3600,
     items_per_page: 25,
+    default_chart_type: 'bar',
+    date_format: 'DD/MM/YYYY',
+    email_notifications: false,
+    notification_email: '',
   })
   const [saved, setSaved] = useState(false)
 
@@ -593,18 +588,6 @@ function SettingsTab({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nom du département
-            </label>
-            <input
-              type="text"
-              value={formData.department_name}
-              onChange={(e) => handleChange('department_name', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
               Année universitaire
             </label>
             <input
@@ -625,7 +608,7 @@ function SettingsTab({
           <div className="flex items-center justify-between">
             <div>
               <label className="font-medium text-gray-700">Cache activé</label>
-              <p className="text-sm text-gray-500">Activer la mise en cache des données</p>
+              <p className="text-sm text-gray-500">Activer la mise en cache Redis des données</p>
             </div>
             <button
               onClick={() => handleChange('cache_enabled', !formData.cache_enabled)}
@@ -649,6 +632,7 @@ function SettingsTab({
               onChange={(e) => handleChange('cache_ttl_default', parseInt(e.target.value))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             />
+            <p className="text-sm text-gray-500 mt-1">Durée de vie des données en cache</p>
           </div>
         </div>
       </div>
@@ -656,20 +640,37 @@ function SettingsTab({
       <div className="card">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Affichage</h3>
         
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Éléments par page
-          </label>
-          <select
-            value={formData.items_per_page}
-            onChange={(e) => handleChange('items_per_page', parseInt(e.target.value))}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value={10}>10</option>
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-          </select>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Éléments par page
+            </label>
+            <select
+              value={formData.items_per_page}
+              onChange={(e) => handleChange('items_per_page', parseInt(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Type de graphique par défaut
+            </label>
+            <select
+              value={formData.default_chart_type}
+              onChange={(e) => handleChange('default_chart_type', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="bar">Barres</option>
+              <option value="line">Lignes</option>
+              <option value="pie">Camembert</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -691,58 +692,4 @@ function SettingsTab({
       </div>
     </div>
   )
-}
-
-// Logs Tab
-function LogsTab({ logs }: { logs: ActivityLog[] }) {
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-gray-900">Logs d'activité</h3>
-        <button className="text-sm text-blue-600 hover:text-blue-700">
-          Exporter les logs
-        </button>
-      </div>
-      
-      <div className="card overflow-hidden">
-        <div className="divide-y divide-gray-200">
-          {logs.map(log => (
-            <div key={log.id} className="flex items-start gap-4 p-4 hover:bg-gray-50">
-              <StatusIcon status={log.status} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-gray-900">{log.action}</span>
-                  {log.source && (
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                      {log.source}
-                    </span>
-                  )}
-                </div>
-                {log.details && (
-                  <p className="text-sm text-gray-500 mt-1">{log.details}</p>
-                )}
-              </div>
-              <span className="text-sm text-gray-400 whitespace-nowrap">
-                {new Date(log.timestamp).toLocaleString('fr-FR')}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Helper components
-function StatusIcon({ status }: { status: string }) {
-  switch (status) {
-    case 'success':
-      return <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-    case 'error':
-      return <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-    case 'warning':
-      return <AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-    default:
-      return <Activity className="w-5 h-5 text-blue-500 flex-shrink-0" />
-  }
 }

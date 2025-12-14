@@ -2,45 +2,83 @@ import { useQuery } from '@tanstack/react-query'
 import { GraduationCap, Users, Wallet, Calendar, TrendingUp } from 'lucide-react'
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell
+  PieChart, Pie, Cell, LabelList
 } from 'recharts'
 import StatCard from '@/components/StatCard'
 import ChartContainer from '@/components/ChartContainer'
 import { scolariteApi, recrutementApi, budgetApi, edtApi } from '@/services/api'
+import { useDepartment } from '../contexts/DepartmentContext'
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
 
 export default function Dashboard() {
+  const { department } = useDepartment()
+
   const { data: scolarite } = useQuery({
-    queryKey: ['scolarite', 'indicators'],
-    queryFn: scolariteApi.getIndicators,
+    queryKey: ['scolarite', 'indicators', department],
+    queryFn: () => scolariteApi.getIndicators(department),
   })
 
   const { data: recrutement } = useQuery({
-    queryKey: ['recrutement', 'indicators'],
-    queryFn: () => recrutementApi.getIndicators(),
+    queryKey: ['recrutement', 'indicators', department],
+    queryFn: () => recrutementApi.getIndicators(department),
   })
 
   const { data: budget } = useQuery({
-    queryKey: ['budget', 'indicators'],
-    queryFn: () => budgetApi.getIndicators(),
+    queryKey: ['budget', 'indicators', department],
+    queryFn: () => budgetApi.getIndicators(department),
   })
 
   const { data: edt } = useQuery({
-    queryKey: ['edt', 'indicators'],
-    queryFn: () => edtApi.getIndicators(),
+    queryKey: ['edt', 'indicators', department],
+    queryFn: () => edtApi.getIndicators(department),
   })
 
   // Prepare chart data
-  const effectifsData = scolarite?.evolution_effectifs 
-    ? Object.entries(scolarite.evolution_effectifs).map(([year, count]) => ({
-        annee: year,
-        effectif: count
-      }))
+  
+  // Build formation color map first
+  const formationColorMap: Record<string, string> = {}
+  if (scolarite?.etudiants_par_formation) {
+    Object.keys(scolarite.etudiants_par_formation).forEach((formation, index) => {
+      formationColorMap[formation] = COLORS[index % COLORS.length]
+    })
+  }
+
+  // Helper to find which formation a semester belongs to
+  const getFormationFromSemesterName = (semName: string): string => {
+    const semLower = semName.toLowerCase()
+    const isApprentissage = semLower.includes('apprentissage')
+    const formations = Object.keys(formationColorMap)
+    
+    if (isApprentissage) {
+      const appFormation = formations.find(f => f.toLowerCase().includes('apprentissage'))
+      if (appFormation) return appFormation
+    } else {
+      const nonAppFormation = formations.find(f => !f.toLowerCase().includes('apprentissage'))
+      if (nonAppFormation) return nonAppFormation
+    }
+    return formations[0] || ''
+  }
+
+  const semestreData = scolarite?.etudiants_par_semestre
+    ? Object.entries(scolarite.etudiants_par_semestre).map(([sem, count]) => {
+        // Extract short semester name
+        const match = sem.match(/semestre\s*(\d+)/i)
+        const semNum = match ? match[1] : '?'
+        const isApprentissage = sem.toLowerCase().includes('apprentissage')
+        const shortName = isApprentissage ? `S${semNum} App` : `S${semNum}`
+        const formation = getFormationFromSemesterName(sem)
+        return {
+          name: shortName,
+          fullName: sem,
+          value: count,
+          color: formationColorMap[formation] || COLORS[0]
+        }
+      })
     : []
 
-  const formationsData = scolarite?.etudiants_par_formation
-    ? Object.entries(scolarite.etudiants_par_formation).map(([name, value]) => ({
+  const typeBacData = recrutement?.par_type_bac
+    ? Object.entries(recrutement.par_type_bac).map(([name, value]) => ({
         name,
         value
       }))
@@ -116,13 +154,13 @@ export default function Dashboard() {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ChartContainer 
-          title="Évolution des effectifs"
-          subtitle="Nombre d'étudiants par année"
+          title="Répartition par semestre"
+          subtitle="Étudiants par semestre"
         >
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={effectifsData}>
+            <BarChart data={semestreData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="annee" stroke="#6b7280" fontSize={12} />
+              <XAxis dataKey="name" stroke="#6b7280" fontSize={12} />
               <YAxis stroke="#6b7280" fontSize={12} />
               <Tooltip 
                 contentStyle={{ 
@@ -130,20 +168,29 @@ export default function Dashboard() {
                   border: '1px solid #e5e7eb',
                   borderRadius: '8px'
                 }}
+                formatter={(value: number, _name: string, props: { payload: { fullName: string } }) => [
+                  `${value} étudiants`, 
+                  props.payload.fullName
+                ]}
               />
-              <Bar dataKey="effectif" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                {semestreData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+                <LabelList dataKey="value" position="top" fill="#374151" fontSize={12} fontWeight={600} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartContainer>
 
         <ChartContainer
-          title="Répartition par formation"
-          subtitle="Étudiants par filière"
+          title="Répartition par type de bac"
+          subtitle="Candidats par filière de baccalauréat"
         >
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={formationsData}
+                data={typeBacData}
                 cx="50%"
                 cy="50%"
                 innerRadius={60}
@@ -153,11 +200,11 @@ export default function Dashboard() {
                 label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                 labelLine={false}
               >
-                {formationsData.map((_, index) => (
+                {typeBacData.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip formatter={(value: number) => [`${value} candidats`, 'Effectif']} />
             </PieChart>
           </ResponsiveContainer>
         </ChartContainer>

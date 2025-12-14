@@ -9,9 +9,11 @@ import {
   Menu,
   Upload,
   Database,
-  UserPlus
+  UserPlus,
+  Building2
 } from 'lucide-react'
 import { useState } from 'react'
+import { useDepartment, DEPARTMENTS, DEPARTMENT_NAMES, type Department } from '../contexts/DepartmentContext'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -30,6 +32,7 @@ const adminItems = [
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { department, setDepartment, departmentName } = useDepartment()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -53,6 +56,25 @@ export default function Layout() {
             📊 Dept Dashboard
           </h1>
           <p className="text-sm text-gray-500 mt-1">Tableau de bord</p>
+        </div>
+
+        {/* Department Selector */}
+        <div className="px-4 py-3 border-b border-gray-100">
+          <label className="flex items-center gap-2 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+            <Building2 className="w-4 h-4" />
+            Département
+          </label>
+          <select
+            value={department}
+            onChange={(e) => setDepartment(e.target.value as Department)}
+            className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          >
+            {DEPARTMENTS.map((dept) => (
+              <option key={dept} value={dept}>
+                {dept} - {DEPARTMENT_NAMES[dept]}
+              </option>
+            ))}
+          </select>
         </div>
 
         <nav className="p-4 space-y-1">
@@ -118,6 +140,9 @@ export default function Layout() {
             </button>
             
             <div className="flex items-center gap-4 ml-auto">
+              <span className="px-3 py-1 text-sm font-medium text-primary-700 bg-primary-50 rounded-full">
+                {department} - {departmentName}
+              </span>
               <span className="text-sm text-gray-500">
                 {new Date().toLocaleDateString('fr-FR', { 
                   weekday: 'long', 

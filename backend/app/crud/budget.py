@@ -1,4 +1,4 @@
-"""CRUD operations for Budget."""
+"""CRUD operations for Budget (department-scoped)."""
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -21,9 +21,12 @@ from app.schemas.budget import (
 
 # ==================== BUDGET ANNUEL ====================
 
-def get_budget_annuel(db: Session, annee: int) -> Optional[BudgetAnnuel]:
-    """Get budget for a specific year."""
-    return db.query(BudgetAnnuel).filter(BudgetAnnuel.annee == annee).first()
+def get_budget_annuel(db: Session, department: str, annee: int) -> Optional[BudgetAnnuel]:
+    """Get budget for a specific department and year."""
+    return db.query(BudgetAnnuel).filter(
+        BudgetAnnuel.department == department,
+        BudgetAnnuel.annee == annee
+    ).first()
 
 
 def get_budget_annuel_by_id(db: Session, budget_id: int) -> Optional[BudgetAnnuel]:
@@ -31,19 +34,24 @@ def get_budget_annuel_by_id(db: Session, budget_id: int) -> Optional[BudgetAnnue
     return db.query(BudgetAnnuel).filter(BudgetAnnuel.id == budget_id).first()
 
 
-def get_latest_budget(db: Session) -> Optional[BudgetAnnuel]:
-    """Get the most recent budget."""
-    return db.query(BudgetAnnuel).order_by(BudgetAnnuel.annee.desc()).first()
+def get_latest_budget(db: Session, department: str) -> Optional[BudgetAnnuel]:
+    """Get the most recent budget for a department."""
+    return db.query(BudgetAnnuel).filter(
+        BudgetAnnuel.department == department
+    ).order_by(BudgetAnnuel.annee.desc()).first()
 
 
-def get_all_budgets(db: Session, skip: int = 0, limit: int = 100) -> list[BudgetAnnuel]:
-    """Get all budgets."""
-    return db.query(BudgetAnnuel).order_by(BudgetAnnuel.annee.desc()).offset(skip).limit(limit).all()
+def get_all_budgets(db: Session, department: str, skip: int = 0, limit: int = 100) -> list[BudgetAnnuel]:
+    """Get all budgets for a department."""
+    return db.query(BudgetAnnuel).filter(
+        BudgetAnnuel.department == department
+    ).order_by(BudgetAnnuel.annee.desc()).offset(skip).limit(limit).all()
 
 
-def create_budget_annuel(db: Session, budget: BudgetAnnuelCreate) -> BudgetAnnuel:
-    """Create a new annual budget."""
+def create_budget_annuel(db: Session, department: str, budget: BudgetAnnuelCreate) -> BudgetAnnuel:
+    """Create a new annual budget for a department."""
     db_budget = BudgetAnnuel(
+        department=department,
         annee=budget.annee,
         budget_total=budget.budget_total,
         previsionnel=budget.previsionnel,
@@ -60,9 +68,9 @@ def create_budget_annuel(db: Session, budget: BudgetAnnuelCreate) -> BudgetAnnue
     return db_budget
 
 
-def update_budget_annuel(db: Session, annee: int, budget: BudgetAnnuelUpdate) -> Optional[BudgetAnnuel]:
+def update_budget_annuel(db: Session, department: str, annee: int, budget: BudgetAnnuelUpdate) -> Optional[BudgetAnnuel]:
     """Update an annual budget."""
-    db_budget = get_budget_annuel(db, annee)
+    db_budget = get_budget_annuel(db, department, annee)
     if not db_budget:
         return None
     
@@ -76,9 +84,9 @@ def update_budget_annuel(db: Session, annee: int, budget: BudgetAnnuelUpdate) ->
     return db_budget
 
 
-def delete_budget_annuel(db: Session, annee: int) -> bool:
+def delete_budget_annuel(db: Session, department: str, annee: int) -> bool:
     """Delete an annual budget and all related data."""
-    db_budget = get_budget_annuel(db, annee)
+    db_budget = get_budget_annuel(db, department, annee)
     if not db_budget:
         return False
     
@@ -87,11 +95,11 @@ def delete_budget_annuel(db: Session, annee: int) -> bool:
     return True
 
 
-def get_or_create_budget_annuel(db: Session, annee: int) -> BudgetAnnuel:
+def get_or_create_budget_annuel(db: Session, department: str, annee: int) -> BudgetAnnuel:
     """Get existing budget or create a new one."""
-    budget = get_budget_annuel(db, annee)
+    budget = get_budget_annuel(db, department, annee)
     if not budget:
-        budget = create_budget_annuel(db, BudgetAnnuelCreate(annee=annee))
+        budget = create_budget_annuel(db, department, BudgetAnnuelCreate(annee=annee))
     return budget
 
 
@@ -272,14 +280,14 @@ def _update_ligne_from_depenses(db: Session, budget_id: int, categorie: str):
 
 # ==================== IMPORT EXCEL ====================
 
-def import_budget_from_excel(db: Session, file_content: bytes, annee: int) -> ImportResult:
-    """Import budget data from Excel file."""
+def import_budget_from_excel(db: Session, department: str, file_content: bytes, annee: int) -> ImportResult:
+    """Import budget data from Excel file for a department."""
     try:
         df = pd.read_excel(io.BytesIO(file_content))
         df.columns = df.columns.str.lower().str.strip()
         
-        # Get or create budget for the year
-        budget = get_or_create_budget_annuel(db, annee)
+        # Get or create budget for the department and year
+        budget = get_or_create_budget_annuel(db, department, annee)
         
         lignes_importees = 0
         depenses_importees = 0
@@ -355,9 +363,9 @@ def import_budget_from_excel(db: Session, file_content: bytes, annee: int) -> Im
 
 # ==================== STATISTICS ====================
 
-def get_budget_stats(db: Session, annee: int) -> dict:
-    """Get budget statistics for a year."""
-    budget = get_budget_annuel(db, annee)
+def get_budget_stats(db: Session, department: str, annee: int) -> dict:
+    """Get budget statistics for a department and year."""
+    budget = get_budget_annuel(db, department, annee)
     if not budget:
         return {}
     
@@ -369,6 +377,7 @@ def get_budget_stats(db: Session, annee: int) -> dict:
     
     return {
         "annee": annee,
+        "department": department,
         "budget_total": total_initial,
         "total_engage": total_engage,
         "total_paye": total_paye,

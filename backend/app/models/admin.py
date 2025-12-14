@@ -1,9 +1,17 @@
-"""Administration models."""
+"""Administration models.
+
+Simplified admin models:
+- DataSource: Configuration for data sources (ScoDoc, Parcoursup, Excel)
+- SystemSettings: Global dashboard settings
+- ScheduledJob: APScheduler job info
+- CacheStats: Redis cache statistics
+- AdminDashboard: Overview for admin page
+"""
 
 from enum import Enum
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class DataSourceType(str, Enum):
@@ -19,7 +27,6 @@ class DataSourceStatus(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
     ERROR = "error"
-    CONFIGURING = "configuring"
 
 
 class DataSourceConfig(BaseModel):
@@ -75,7 +82,6 @@ class SystemSettings(BaseModel):
     """Paramètres système du dashboard."""
     # Général
     dashboard_title: str = "Dashboard Département"
-    department_name: str = "Département RT"
     academic_year: str = "2024-2025"
     
     # Cache
@@ -87,7 +93,7 @@ class SystemSettings(BaseModel):
     items_per_page: int = 25
     date_format: str = "DD/MM/YYYY"
     
-    # Notifications
+    # Notifications (préparation future)
     email_notifications: bool = False
     notification_email: Optional[str] = None
 
@@ -114,28 +120,6 @@ class CacheStats(BaseModel):
     hit_rate: float = 0.0
 
 
-class SyncResult(BaseModel):
-    """Résultat d'une synchronisation."""
-    source_id: str
-    source_name: str
-    success: bool
-    records_synced: int = 0
-    duration_seconds: float = 0.0
-    error: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.now)
-
-
-class ActivityLog(BaseModel):
-    """Log d'activité."""
-    id: str
-    timestamp: datetime
-    action: str
-    user: Optional[str] = None
-    details: Optional[str] = None
-    source: Optional[str] = None
-    status: str = "info"  # info, warning, error, success
-
-
 class AdminDashboard(BaseModel):
     """Vue d'ensemble admin."""
     # Sources
@@ -149,7 +133,3 @@ class AdminDashboard(BaseModel):
     # Jobs
     scheduled_jobs: int = 0
     jobs_running: int = 0
-    
-    # Dernières activités
-    recent_syncs: list[SyncResult] = []
-    recent_logs: list[ActivityLog] = []

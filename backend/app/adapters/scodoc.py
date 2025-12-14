@@ -130,6 +130,50 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         result = await self._api_get(f"/api/departement/{self.department}/formsemestres_courants")
         return result if result else []
     
+    async def get_formsemestres_by_annee(self, annee: str) -> list[dict]:
+        """Get form semesters for a specific academic year.
+        
+        Args:
+            annee: Academic year in format '2024-2025' or '2024'
+        
+        Returns:
+            List of semesters that match the requested year
+        """
+        # First get all current semesters
+        all_semesters = await self.get_formsemestres_courants()
+        
+        if not annee:
+            return all_semesters
+        
+        # Extract year from format '2024-2025' or '2024'
+        year_start = annee.split('-')[0] if '-' in annee else annee
+        
+        # Filter semesters by year
+        # ScoDoc semesters have 'annee_scolaire' or 'annee' field (e.g., '2024')
+        # or date_debut/date_fin fields
+        filtered = []
+        for sem in all_semesters:
+            sem_annee = sem.get('annee_scolaire') or sem.get('annee') or ''
+            if str(sem_annee) == str(year_start):
+                filtered.append(sem)
+                continue
+            
+            # Check by date_debut if available
+            date_debut = sem.get('date_debut', '')
+            if date_debut:
+                # Format: '2024-09-01' -> year is 2024
+                debut_year = date_debut.split('-')[0] if '-' in date_debut else ''
+                # Academic year starts in September, so Sept-Dec is start of year
+                if debut_year == year_start:
+                    filtered.append(sem)
+                    continue
+                # Jan-Aug belongs to previous academic year
+                if int(debut_year) == int(year_start) + 1:
+                    debut_month = int(date_debut.split('-')[1]) if '-' in date_debut else 1
+                    if debut_month < 9:  # Before September = previous academic year
+                        filtered.append(sem)
+        
+        return filtered if filtered else all_semesters  # Fallback to all if no match
     async def get_formsemestre_etudiants(self, formsemestre_id: int) -> list[dict]:
         """Get students enrolled in a semester."""
         result = await self._api_get(f"/api/formsemestre/{formsemestre_id}/etudiants")
@@ -144,11 +188,19 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         return await self._api_get(f"/api/formsemestre/{formsemestre_id}/programme")
     
     async def get_formsemestre_assiduites_count(self, formsemestre_id: int) -> Optional[dict]:
-        """Get absences count for a semester."""
+        """Get absences count for a semester.
+        
+        Returns dict with: heure (hours absent), compte (absence count), journee, demi
+        """
         return await self._api_get(
             f"/api/assiduites/formsemestre/{formsemestre_id}/count",
-            params={"metric": "compte", "split": "true"}
+            params={"metric": "heure"}  # Get all metrics, heure is the key value
         )
+    
+    async def get_formsemestre_etudiants(self, formsemestre_id: int) -> list[dict]:
+        """Get list of students enrolled in a semester."""
+        result = await self._api_get(f"/api/formsemestre/{formsemestre_id}/etudiants")
+        return result if result else []
     
     async def get_department_etudiants(self) -> list[dict]:
         """Get all students in department."""
@@ -167,13 +219,19 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
             "resultats": [],
             "programmes": [],
             "assiduites": [],
+            "sem_etudiants": {},  # Map formsemestre_id -> nb_etudiants
         }
         
         try:
-            # Get current semesters
-            semestres = await self.get_formsemestres_courants()
+            # Get semesters - filter by year if provided
+            annee = kwargs.get('annee')
+            if annee:
+                semestres = await self.get_formsemestres_by_annee(annee)
+                logger.info(f"Found {len(semestres)} semesters for year {annee}")
+            else:
+                semestres = await self.get_formsemestres_courants()
+                logger.info(f"Found {len(semestres)} current semesters")
             data["semestres"] = semestres
-            logger.info(f"Found {len(semestres)} current semesters")
             
             # Get all students in department
             all_etudiants = await self.get_department_etudiants()
@@ -187,6 +245,11 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
                     continue
                 
                 logger.info(f"Fetching data for semester {sem_id}: {sem.get('titre', 'N/A')}")
+                
+                # Get enrolled students count for this semester
+                sem_etudiants = await self.get_formsemestre_etudiants(sem_id)
+                data["sem_etudiants"][sem_id] = len(sem_etudiants)
+                logger.info(f"  Semester {sem_id}: {len(sem_etudiants)} enrolled students")
                 
                 # Get results
                 resultats = await self.get_formsemestre_resultats(sem_id)
@@ -211,6 +274,7 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
                         "formsemestre_id": sem_id,
                         "data": assiduites
                     })
+                    logger.info(f"  Semester {sem_id}: {assiduites.get('heure', 0)} hours absent")
             
         except Exception as e:
             logger.error(f"Error fetching ScoDoc data: {e}")
@@ -282,9 +346,9 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         modules_stats = []
         semestres_stats = []
         
-        # Collect module grades across all semesters
-        # Key: (module_id, ue_id), Value: list of grades
-        module_grades: dict[tuple, list[float]] = {}
+        # Collect module grades PER SEMESTER to avoid counting same module across semesters
+        # Key: (sem_id, module_id, ue_id), Value: list of grades
+        module_grades_per_sem: dict[tuple, list[float]] = {}
         
         for res_item in resultats_list:
             res_data = res_item.get("data")
@@ -313,6 +377,8 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
             if isinstance(res_data, list):
                 for etud_res in res_data:
                     if isinstance(etud_res, dict):
+                        etudid = etud_res.get("etudid")  # Get student ID
+                        
                         # moy_gen is the general average as a string like "16.38" or "~" if not calculated
                         moy = etud_res.get("moy_gen")
                         if moy and moy != "~" and moy != "":
@@ -338,10 +404,12 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
                                         ue_id = int(parts[3])
                                         grade_val = float(str(value).replace(",", "."))
                                         
-                                        mod_key = (module_id, ue_id)
-                                        if mod_key not in module_grades:
-                                            module_grades[mod_key] = []
-                                        module_grades[mod_key].append(grade_val)
+                                        # Key includes sem_id to keep modules separate per semester
+                                        mod_key = (sem_id, module_id, ue_id)
+                                        if mod_key not in module_grades_per_sem:
+                                            module_grades_per_sem[mod_key] = []
+                                        # Store (etudid, grade) tuple to track unique students
+                                        module_grades_per_sem[mod_key].append((etudid, grade_val))
                                 except (ValueError, TypeError, IndexError):
                                     pass
             
@@ -395,11 +463,12 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         taux_reussite = (nb_validations / nb_total_notes * 100) if nb_total_notes > 0 else 0
         
         # Build module statistics from collected grades
-        # Aggregate by module CODE (not module_id) to combine same modules across semesters
+        # Keep modules separate per semester, then aggregate by code within same semester
         import statistics
         
-        module_grades_by_code: dict[str, dict] = {}
-        for (module_id, ue_id), grades in module_grades.items():
+        # Group by (sem_id, code) to keep modules unique per semester
+        module_grades_by_sem_code: dict[tuple, dict] = {}
+        for (sem_id, module_id, ue_id), grades in module_grades_per_sem.items():
             mod_info = modules_info.get(module_id, {})
             code = mod_info.get("code", "")
             titre = mod_info.get("titre", "Module")
@@ -408,15 +477,42 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
             if not code:
                 continue
             
-            if code not in module_grades_by_code:
-                module_grades_by_code[code] = {"titre": titre, "grades": []}
+            key = (sem_id, code)
+            if key not in module_grades_by_sem_code:
+                module_grades_by_sem_code[key] = {"titre": titre, "grades": [], "sem_id": sem_id}
             
-            # Add grades (avoiding duplicates within same UE)
-            module_grades_by_code[code]["grades"].extend(grades)
+            # Add grades for this UE (a module may have grades in multiple UEs)
+            # grades is now a list of (etudid, grade_val) tuples
+            module_grades_by_sem_code[key]["grades"].extend(grades)
         
-        for code, data in module_grades_by_code.items():
-            grades = data["grades"]
+        # Now aggregate same codes across semesters for display
+        # But keep nb_etudiants as the UNIQUE count per code (using etudid)
+        module_stats_by_code: dict[str, dict] = {}
+        for (sem_id, code), data in module_grades_by_sem_code.items():
+            grades = data["grades"]  # List of (etudid, grade) tuples
             titre = data["titre"]
+            
+            if not grades:
+                continue
+            
+            if code not in module_stats_by_code:
+                module_stats_by_code[code] = {
+                    "titre": titre, 
+                    "grade_values": [],  # Just the grade values for stats
+                    "unique_students": set(),  # Set of etudid
+                    "semesters": set()
+                }
+            
+            module_stats_by_code[code]["semesters"].add(sem_id)
+            for etudid, grade_val in grades:
+                module_stats_by_code[code]["grade_values"].append(grade_val)
+                if etudid:  # Only count if we have a valid etudid
+                    module_stats_by_code[code]["unique_students"].add(etudid)
+        
+        for code, data in module_stats_by_code.items():
+            grades = data["grade_values"]
+            titre = data["titre"]
+            nb_unique = len(data["unique_students"]) if data["unique_students"] else len(grades)
             
             if not grades:
                 continue
@@ -435,7 +531,7 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
                 mediane=round(mediane, 2),
                 ecart_type=round(ecart_type, 2),
                 taux_reussite=round(taux_reussite_mod, 1),
-                nb_etudiants=len(grades),
+                nb_etudiants=nb_unique,  # Unique students (by etudid)
                 nb_notes=len(grades),
             ))
         
@@ -443,16 +539,34 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         modules_stats.sort(key=lambda m: m.code)
         
         # Calculate absence rate from assiduites data
+        # ScoDoc returns: {"heure": total_hours_absent, "compte": nb_absences, ...}
+        # We estimate expected hours: ~400h per semester per student
+        HEURES_SEMESTRE_ESTIMEES = 400  # Estimated hours per student per semester
+        
         assiduites_list = raw_data.get("assiduites", [])
-        total_absences = 0
-        total_presences = 0
+        sem_etudiants = raw_data.get("sem_etudiants", {})  # Map sem_id -> nb_etudiants
+        total_heures_absence = 0.0
+        total_heures_attendues = 0.0
+        
         for ass_item in assiduites_list:
             ass_data = ass_item.get("data", {})
+            sem_id = ass_item.get("formsemestre_id")
+            
             if isinstance(ass_data, dict):
-                total_absences += ass_data.get("absent", {}).get("compte", 0)
-                total_presences += ass_data.get("present", {}).get("compte", 0)
+                # Get hours of absence from ScoDoc
+                heures_absence = ass_data.get("heure", 0) or 0
+                total_heures_absence += heures_absence
+                
+                # Get student count for this semester from the pre-fetched data
+                nb_etudiants_sem = sem_etudiants.get(sem_id, 0)
+                
+                if nb_etudiants_sem > 0:
+                    total_heures_attendues += nb_etudiants_sem * HEURES_SEMESTRE_ESTIMEES
+                    logger.debug(f"Semester {sem_id}: {heures_absence}h absent / {nb_etudiants_sem * HEURES_SEMESTRE_ESTIMEES}h expected")
         
-        taux_absenteisme = (total_absences / (total_absences + total_presences) * 100) if (total_absences + total_presences) > 0 else 0
+        # Calculate absence rate
+        taux_absenteisme = (total_heures_absence / total_heures_attendues * 100) if total_heures_attendues > 0 else 0
+        logger.info(f"Taux absentéisme: {total_heures_absence}h absent / {total_heures_attendues}h expected = {taux_absenteisme:.2f}%")
         
         # Total students = sum of all students in current semesters
         total_etudiants_courants = sum(par_formation.values())
@@ -547,58 +661,74 @@ class MockScoDocAdapter(BaseAdapter[ScolariteIndicators]):
     
     async def fetch_raw(self, **kwargs) -> dict[str, Any]:
         """Return mock data."""
+        annee = kwargs.get('annee', '2024-2025')
+        # Parse year from format '2024-2025' or default to 2024
+        year_start = int(annee.split('-')[0]) if annee and '-' in annee else 2024
+        year_str = f"{year_start}-{year_start + 1}"
+        
+        # Generate different data based on year
+        base_students = 120 + (year_start - 2020) * 10  # More students each year
+        
         return {
             "etudiants": [
                 {"etudid": i, "nom": f"Nom{i}", "prenom": f"Prenom{i}", 
                  "formation": "BUT RT", "semestre": f"S{(i % 6) + 1}"}
-                for i in range(1, 151)
+                for i in range(1, base_students + 1)
             ],
             "semestres": [
-                {"formsemestre_id": i, "titre": f"Semestre {i}", "annee": "2024-2025"}
+                {"formsemestre_id": i, "titre": f"Semestre {i}", "annee": year_str, "annee_scolaire": year_start}
                 for i in range(1, 7)
             ],
+            "annee": year_str,
         }
     
     def transform(self, raw_data: dict[str, Any]) -> ScolariteIndicators:
         etudiants = raw_data.get("etudiants", [])
+        annee = raw_data.get("annee", "2024-2025")
+        year_start = int(annee.split('-')[0]) if '-' in annee else 2024
         
-        par_formation = {"BUT RT": 100}
-        par_semestre = {f"S{i}": 25 for i in range(1, 7)}
+        # Vary data by year for more realistic mock
+        base_moyenne = 11.5 + (year_start - 2020) * 0.2
+        base_reussite = 0.72 + (year_start - 2020) * 0.02
+        nb_per_sem = len(etudiants) // 6
+        
+        par_formation = {"BUT RT": len(etudiants)}
+        par_semestre = {f"S{i}": nb_per_sem + (i % 3) for i in range(1, 7)}
         
         return ScolariteIndicators(
             total_etudiants=len(etudiants),
             etudiants_par_formation=par_formation,
             etudiants_par_semestre=par_semestre,
-            moyenne_generale=12.34,
-            taux_reussite_global=0.78,
-            taux_absenteisme=0.065,
+            moyenne_generale=round(base_moyenne, 2),
+            taux_reussite_global=round(min(base_reussite, 0.95), 2),
+            taux_absenteisme=round(8.0 - (year_start - 2020) * 0.3, 1),  # Decreasing over years
             modules_stats=[
                 ModuleStats(
-                    code="R101", nom="Init Dev", moyenne=11.5, mediane=12.0,
-                    ecart_type=3.2, taux_reussite=0.82, nb_etudiants=50, nb_notes=50
+                    code="R101", nom="Init Dev", moyenne=round(base_moyenne - 0.5, 2), mediane=round(base_moyenne, 2),
+                    ecart_type=3.2, taux_reussite=round(base_reussite - 0.05, 2), nb_etudiants=nb_per_sem, nb_notes=nb_per_sem
                 ),
                 ModuleStats(
-                    code="R102", nom="Réseaux", moyenne=13.2, mediane=13.5,
-                    ecart_type=2.8, taux_reussite=0.88, nb_etudiants=50, nb_notes=50
+                    code="R102", nom="Réseaux", moyenne=round(base_moyenne + 1.0, 2), mediane=round(base_moyenne + 1.2, 2),
+                    ecart_type=2.8, taux_reussite=round(base_reussite + 0.05, 2), nb_etudiants=nb_per_sem, nb_notes=nb_per_sem
                 ),
                 ModuleStats(
-                    code="R103", nom="Systèmes", moyenne=10.8, mediane=11.0,
-                    ecart_type=4.1, taux_reussite=0.72, nb_etudiants=50, nb_notes=50
+                    code="R103", nom="Systèmes", moyenne=round(base_moyenne - 1.0, 2), mediane=round(base_moyenne - 0.8, 2),
+                    ecart_type=4.1, taux_reussite=round(base_reussite - 0.10, 2), nb_etudiants=nb_per_sem, nb_notes=nb_per_sem
                 ),
             ],
             semestres_stats=[
                 SemestreStats(
-                    code="S1", nom="Semestre 1", annee="2024-2025",
-                    nb_etudiants=52, moyenne_generale=11.8, 
-                    taux_reussite=0.75, taux_absenteisme=0.07
+                    code="S1", nom="Semestre 1", annee=annee,
+                    nb_etudiants=nb_per_sem + 2, moyenne_generale=round(base_moyenne - 0.3, 2), 
+                    taux_reussite=round(base_reussite - 0.03, 2), taux_absenteisme=7.2
                 ),
                 SemestreStats(
-                    code="S2", nom="Semestre 2", annee="2024-2025",
-                    nb_etudiants=48, moyenne_generale=12.5,
-                    taux_reussite=0.80, taux_absenteisme=0.05
+                    code="S2", nom="Semestre 2", annee=annee,
+                    nb_etudiants=nb_per_sem, moyenne_generale=round(base_moyenne + 0.2, 2),
+                    taux_reussite=round(base_reussite + 0.02, 2), taux_absenteisme=4.5
                 ),
             ],
             evolution_effectifs={
-                "2021": 120, "2022": 135, "2023": 142, "2024": 150
+                "2021": 120, "2022": 135, "2023": 142, "2024": 150, "2025": 158
             },
         )

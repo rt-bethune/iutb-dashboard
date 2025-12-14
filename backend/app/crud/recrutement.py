@@ -1,4 +1,4 @@
-"""CRUD operations for Recrutement/Parcoursup."""
+"""CRUD operations for Recrutement/Parcoursup (department-scoped)."""
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -21,9 +21,12 @@ from app.schemas.recrutement import (
 
 # ==================== CAMPAGNE ====================
 
-def get_campagne(db: Session, annee: int) -> Optional[CampagneRecrutement]:
-    """Get campaign for a specific year."""
-    return db.query(CampagneRecrutement).filter(CampagneRecrutement.annee == annee).first()
+def get_campagne(db: Session, department: str, annee: int) -> Optional[CampagneRecrutement]:
+    """Get campaign for a specific department and year."""
+    return db.query(CampagneRecrutement).filter(
+        CampagneRecrutement.department == department,
+        CampagneRecrutement.annee == annee
+    ).first()
 
 
 def get_campagne_by_id(db: Session, campagne_id: int) -> Optional[CampagneRecrutement]:
@@ -31,14 +34,17 @@ def get_campagne_by_id(db: Session, campagne_id: int) -> Optional[CampagneRecrut
     return db.query(CampagneRecrutement).filter(CampagneRecrutement.id == campagne_id).first()
 
 
-def get_all_campagnes(db: Session, skip: int = 0, limit: int = 100) -> list[CampagneRecrutement]:
-    """Get all campaigns."""
-    return db.query(CampagneRecrutement).order_by(CampagneRecrutement.annee.desc()).offset(skip).limit(limit).all()
+def get_all_campagnes(db: Session, department: str, skip: int = 0, limit: int = 100) -> list[CampagneRecrutement]:
+    """Get all campaigns for a department."""
+    return db.query(CampagneRecrutement).filter(
+        CampagneRecrutement.department == department
+    ).order_by(CampagneRecrutement.annee.desc()).offset(skip).limit(limit).all()
 
 
-def create_campagne(db: Session, campagne: CampagneCreate) -> CampagneRecrutement:
-    """Create a new recruitment campaign."""
+def create_campagne(db: Session, department: str, campagne: CampagneCreate) -> CampagneRecrutement:
+    """Create a new recruitment campaign for a department."""
     db_campagne = CampagneRecrutement(
+        department=department,
         annee=campagne.annee,
         nb_places=campagne.nb_places,
         date_debut=campagne.date_debut,
@@ -51,9 +57,9 @@ def create_campagne(db: Session, campagne: CampagneCreate) -> CampagneRecrutemen
     return db_campagne
 
 
-def update_campagne(db: Session, annee: int, campagne: CampagneUpdate) -> Optional[CampagneRecrutement]:
+def update_campagne(db: Session, department: str, annee: int, campagne: CampagneUpdate) -> Optional[CampagneRecrutement]:
     """Update a campaign."""
-    db_campagne = get_campagne(db, annee)
+    db_campagne = get_campagne(db, department, annee)
     if not db_campagne:
         return None
     
@@ -67,9 +73,9 @@ def update_campagne(db: Session, annee: int, campagne: CampagneUpdate) -> Option
     return db_campagne
 
 
-def delete_campagne(db: Session, annee: int) -> bool:
+def delete_campagne(db: Session, department: str, annee: int) -> bool:
     """Delete a campaign and all its candidates."""
-    db_campagne = get_campagne(db, annee)
+    db_campagne = get_campagne(db, department, annee)
     if not db_campagne:
         return False
     
@@ -78,11 +84,11 @@ def delete_campagne(db: Session, annee: int) -> bool:
     return True
 
 
-def get_or_create_campagne(db: Session, annee: int) -> CampagneRecrutement:
+def get_or_create_campagne(db: Session, department: str, annee: int) -> CampagneRecrutement:
     """Get existing campaign or create a new one."""
-    campagne = get_campagne(db, annee)
+    campagne = get_campagne(db, department, annee)
     if not campagne:
-        campagne = create_campagne(db, CampagneCreate(annee=annee))
+        campagne = create_campagne(db, department, CampagneCreate(annee=annee))
     return campagne
 
 
@@ -203,8 +209,8 @@ def delete_candidat(db: Session, candidat_id: int) -> bool:
 
 # ==================== IMPORT PARCOURSUP ====================
 
-def import_parcoursup_from_csv(db: Session, file_content: bytes, annee: int) -> ImportParcoursupResult:
-    """Import Parcoursup data from CSV file."""
+def import_parcoursup_from_csv(db: Session, department: str, file_content: bytes, annee: int) -> ImportParcoursupResult:
+    """Import Parcoursup data from CSV file for a department."""
     try:
         # Try different encodings
         for encoding in ["utf-8", "latin-1", "cp1252"]:
@@ -218,8 +224,8 @@ def import_parcoursup_from_csv(db: Session, file_content: bytes, annee: int) -> 
         
         df.columns = df.columns.str.lower().str.strip()
         
-        # Get or create campaign
-        campagne = get_or_create_campagne(db, annee)
+        # Get or create campaign for department
+        campagne = get_or_create_campagne(db, department, annee)
         
         candidats_importes = 0
         candidats_mis_a_jour = 0
@@ -315,7 +321,7 @@ def import_parcoursup_from_csv(db: Session, file_content: bytes, annee: int) -> 
         db.commit()
         
         # Update statistics
-        _update_stats(db, campagne.id, annee)
+        _update_stats(db, department, campagne.id, annee)
         
         return ImportParcoursupResult(
             success=True,
@@ -336,15 +342,15 @@ def import_parcoursup_from_csv(db: Session, file_content: bytes, annee: int) -> 
         )
 
 
-def import_parcoursup_from_excel(db: Session, file_content: bytes, annee: int) -> ImportParcoursupResult:
-    """Import Parcoursup data from Excel file."""
+def import_parcoursup_from_excel(db: Session, department: str, file_content: bytes, annee: int) -> ImportParcoursupResult:
+    """Import Parcoursup data from Excel file for a department."""
     try:
         df = pd.read_excel(io.BytesIO(file_content))
         # Convert to CSV bytes and use existing parser
         csv_buffer = io.BytesIO()
         df.to_csv(csv_buffer, index=False, sep=";", encoding="utf-8")
         csv_buffer.seek(0)
-        return import_parcoursup_from_csv(db, csv_buffer.read(), annee)
+        return import_parcoursup_from_csv(db, department, csv_buffer.read(), annee)
     except Exception as e:
         return ImportParcoursupResult(
             success=False,
@@ -358,6 +364,7 @@ def import_parcoursup_from_excel(db: Session, file_content: bytes, annee: int) -
 
 def save_direct_stats(
     db: Session, 
+    department: str,
     annee: int, 
     nb_voeux: int,
     nb_acceptes: int,
@@ -374,14 +381,17 @@ def save_direct_stats(
     This is useful for quick entry of aggregate data.
     """
     # Create or get campaign
-    campagne = get_campagne(db, annee)
+    campagne = get_campagne(db, department, annee)
     if not campagne:
-        campagne = create_campagne(db, CampagneCreate(annee=annee))
+        campagne = create_campagne(db, department, CampagneCreate(annee=annee))
     
     # Update or create stats
-    stats = db.query(StatistiquesParcoursup).filter(StatistiquesParcoursup.annee == annee).first()
+    stats = db.query(StatistiquesParcoursup).filter(
+        StatistiquesParcoursup.department == department,
+        StatistiquesParcoursup.annee == annee
+    ).first()
     if not stats:
-        stats = StatistiquesParcoursup(annee=annee)
+        stats = StatistiquesParcoursup(department=department, annee=annee)
         db.add(stats)
     
     stats.nb_voeux = nb_voeux
@@ -400,7 +410,7 @@ def save_direct_stats(
     return stats
 
 
-def _update_stats(db: Session, campagne_id: int, annee: int):
+def _update_stats(db: Session, department: str, campagne_id: int, annee: int):
     """Update aggregated statistics for a campaign."""
     candidats = db.query(CandidatDB).filter(CandidatDB.campagne_id == campagne_id).all()
     
@@ -429,9 +439,12 @@ def _update_stats(db: Session, campagne_id: int, annee: int):
         par_origine[origine] = par_origine.get(origine, 0) + 1
     
     # Update or create stats
-    stats = db.query(StatistiquesParcoursup).filter(StatistiquesParcoursup.annee == annee).first()
+    stats = db.query(StatistiquesParcoursup).filter(
+        StatistiquesParcoursup.department == department,
+        StatistiquesParcoursup.annee == annee
+    ).first()
     if not stats:
-        stats = StatistiquesParcoursup(annee=annee)
+        stats = StatistiquesParcoursup(department=department, annee=annee)
         db.add(stats)
     
     stats.nb_voeux = nb_voeux
@@ -447,18 +460,21 @@ def _update_stats(db: Session, campagne_id: int, annee: int):
     db.commit()
 
 
-def get_parcoursup_stats(db: Session, annee: int) -> Optional[ParcoursupStats]:
-    """Get Parcoursup statistics for a year."""
-    campagne = get_campagne(db, annee)
+def get_parcoursup_stats(db: Session, department: str, annee: int) -> Optional[ParcoursupStats]:
+    """Get Parcoursup statistics for a department and year."""
+    campagne = get_campagne(db, department, annee)
     if not campagne:
         return None
     
     # Check if we have candidats - if so, update stats from them
     candidat_count = db.query(CandidatDB).filter(CandidatDB.campagne_id == campagne.id).count()
     if candidat_count > 0:
-        _update_stats(db, campagne.id, annee)
+        _update_stats(db, department, campagne.id, annee)
     
-    stats = db.query(StatistiquesParcoursup).filter(StatistiquesParcoursup.annee == annee).first()
+    stats = db.query(StatistiquesParcoursup).filter(
+        StatistiquesParcoursup.department == department,
+        StatistiquesParcoursup.annee == annee
+    ).first()
     if not stats:
         return None
     
@@ -500,9 +516,11 @@ def get_parcoursup_stats(db: Session, annee: int) -> Optional[ParcoursupStats]:
     )
 
 
-def get_evolution_recrutement(db: Session, limit: int = 5) -> dict:
-    """Get recruitment evolution over years."""
-    campagnes = db.query(CampagneRecrutement).order_by(CampagneRecrutement.annee.desc()).limit(limit).all()
+def get_evolution_recrutement(db: Session, department: str, limit: int = 5) -> dict:
+    """Get recruitment evolution over years for a department."""
+    campagnes = db.query(CampagneRecrutement).filter(
+        CampagneRecrutement.department == department
+    ).order_by(CampagneRecrutement.annee.desc()).limit(limit).all()
     
     annees = []
     nb_voeux = []
@@ -510,7 +528,10 @@ def get_evolution_recrutement(db: Session, limit: int = 5) -> dict:
     taux_remplissage = []
     
     for campagne in reversed(campagnes):
-        stats = db.query(StatistiquesParcoursup).filter(StatistiquesParcoursup.annee == campagne.annee).first()
+        stats = db.query(StatistiquesParcoursup).filter(
+            StatistiquesParcoursup.department == department,
+            StatistiquesParcoursup.annee == campagne.annee
+        ).first()
         if stats:
             annees.append(campagne.annee)
             nb_voeux.append(stats.nb_voeux)

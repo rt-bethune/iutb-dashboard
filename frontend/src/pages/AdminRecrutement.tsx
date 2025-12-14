@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminRecrutementApi } from '../services/api'
+import { useDepartment } from '../contexts/DepartmentContext'
 import { 
   Plus, Trash2, Upload, Users, FileSpreadsheet, Save,
   TrendingUp, CheckCircle, XCircle, Clock, BarChart3, School
@@ -22,6 +23,7 @@ interface StatsForm {
 }
 
 export default function AdminRecrutement() {
+  const { department } = useDepartment()
   const queryClient = useQueryClient()
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
   const [showNewCampagneForm, setShowNewCampagneForm] = useState(false)
@@ -49,19 +51,19 @@ export default function AdminRecrutement() {
 
   // Queries
   const { data: campagnes = [], isLoading: campagnesLoading } = useQuery({
-    queryKey: ['recrutementCampagnes'],
-    queryFn: adminRecrutementApi.getCampagnes,
+    queryKey: ['recrutementCampagnes', department],
+    queryFn: () => adminRecrutementApi.getCampagnes(department),
   })
 
   const { data: campagneData } = useQuery({
-    queryKey: ['recrutementCampagne', selectedYear],
-    queryFn: () => adminRecrutementApi.getCampagne(selectedYear),
+    queryKey: ['recrutementCampagne', department, selectedYear],
+    queryFn: () => adminRecrutementApi.getCampagne(department, selectedYear),
     enabled: !!selectedYear && campagnes.some((c: any) => c.annee === selectedYear),
   })
 
   const { data: stats } = useQuery({
-    queryKey: ['recrutementStats', selectedYear],
-    queryFn: () => adminRecrutementApi.getStats(selectedYear),
+    queryKey: ['recrutementStats', department, selectedYear],
+    queryFn: () => adminRecrutementApi.getStats(department, selectedYear),
     enabled: !!selectedYear && campagnes.some((c: any) => c.annee === selectedYear),
   })
 
@@ -92,9 +94,10 @@ export default function AdminRecrutement() {
 
   // Mutations
   const createCampagneMutation = useMutation({
-    mutationFn: adminRecrutementApi.createCampagne,
+    mutationFn: (data: { annee: number; nb_places: number }) => 
+      adminRecrutementApi.createCampagne(department, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['recrutementCampagnes'] })
+      queryClient.invalidateQueries({ queryKey: ['recrutementCampagnes', department] })
       setShowNewCampagneForm(false)
       setNewCampagne({ annee: new Date().getFullYear() + 1, nb_places: 100 })
     },
@@ -102,25 +105,25 @@ export default function AdminRecrutement() {
 
   const updateCampagneMutation = useMutation({
     mutationFn: ({ annee, data }: { annee: number; data: any }) => 
-      adminRecrutementApi.updateCampagne(annee, data),
+      adminRecrutementApi.updateCampagne(department, annee, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['recrutementCampagne', selectedYear] })
+      queryClient.invalidateQueries({ queryKey: ['recrutementCampagne', department, selectedYear] })
     },
   })
 
   const deleteCampagneMutation = useMutation({
-    mutationFn: adminRecrutementApi.deleteCampagne,
+    mutationFn: (annee: number) => adminRecrutementApi.deleteCampagne(department, annee),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['recrutementCampagnes'] })
+      queryClient.invalidateQueries({ queryKey: ['recrutementCampagnes', department] })
     },
   })
 
   const saveStatsMutation = useMutation({
-    mutationFn: (data: StatsForm) => adminRecrutementApi.saveStats(selectedYear, data),
+    mutationFn: (data: StatsForm) => adminRecrutementApi.saveStats(department, selectedYear, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['recrutementStats', selectedYear] })
-      queryClient.invalidateQueries({ queryKey: ['recrutementCampagnes'] })
-      queryClient.invalidateQueries({ queryKey: ['recrutement', 'indicators'] })
+      queryClient.invalidateQueries({ queryKey: ['recrutementStats', department, selectedYear] })
+      queryClient.invalidateQueries({ queryKey: ['recrutementCampagnes', department] })
+      queryClient.invalidateQueries({ queryKey: ['recrutement', 'indicators', department] })
       alert('Indicateurs enregistrés avec succès !')
     },
     onError: (error: any) => {
@@ -129,10 +132,10 @@ export default function AdminRecrutement() {
   })
 
   const importExcelMutation = useMutation({
-    mutationFn: ({ file, annee }: { file: File; annee: number }) => adminRecrutementApi.importExcel(file, annee),
+    mutationFn: ({ file, annee }: { file: File; annee: number }) => adminRecrutementApi.importExcel(department, file, annee),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['recrutementCampagnes'] })
-      queryClient.invalidateQueries({ queryKey: ['recrutementStats', selectedYear] })
+      queryClient.invalidateQueries({ queryKey: ['recrutementCampagnes', department] })
+      queryClient.invalidateQueries({ queryKey: ['recrutementStats', department, selectedYear] })
       setShowImportModal(false)
       setImportFile(null)
       alert(`Import réussi: ${data.candidats_importes} candidats importés`)

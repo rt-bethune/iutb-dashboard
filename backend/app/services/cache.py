@@ -219,36 +219,42 @@ class CacheKeys:
     EDT = "edt"
     
     @staticmethod
-    def scolarite_indicators(annee: Optional[str] = None) -> str:
+    def scolarite_indicators(annee: Optional[str] = None, department: Optional[str] = None) -> str:
+        dept = department or "default"
         if annee:
-            return f"scolarite:indicators:{annee}"
-        return "scolarite:indicators:current"
+            return f"scolarite:{dept}:indicators:{annee}"
+        return f"scolarite:{dept}:indicators:current"
     
     @staticmethod
-    def scolarite_etudiants(formation: Optional[str] = None, semestre: Optional[str] = None) -> str:
-        return f"scolarite:etudiants:{formation or 'all'}:{semestre or 'all'}"
+    def scolarite_etudiants(formation: Optional[str] = None, semestre: Optional[str] = None, department: Optional[str] = None) -> str:
+        dept = department or "default"
+        return f"scolarite:{dept}:etudiants:{formation or 'all'}:{semestre or 'all'}"
     
     @staticmethod
-    def recrutement_indicators(annee: Optional[int] = None) -> str:
+    def recrutement_indicators(annee: Optional[int] = None, department: Optional[str] = None) -> str:
+        dept = department or "default"
         if annee:
-            return f"recrutement:indicators:{annee}"
-        return "recrutement:indicators:current"
+            return f"recrutement:{dept}:indicators:{annee}"
+        return f"recrutement:{dept}:indicators:current"
     
     @staticmethod
-    def budget_indicators(annee: Optional[int] = None) -> str:
+    def budget_indicators(annee: Optional[int] = None, department: Optional[str] = None) -> str:
+        dept = department or "default"
         if annee:
-            return f"budget:indicators:{annee}"
-        return "budget:indicators:current"
+            return f"budget:{dept}:indicators:{annee}"
+        return f"budget:{dept}:indicators:current"
     
     @staticmethod
-    def edt_indicators(annee: Optional[str] = None) -> str:
+    def edt_indicators(annee: Optional[str] = None, department: Optional[str] = None) -> str:
+        dept = department or "default"
         if annee:
-            return f"edt:indicators:{annee}"
-        return "edt:indicators:current"
+            return f"edt:{dept}:indicators:{annee}"
+        return f"edt:{dept}:indicators:current"
     
     @staticmethod
-    def last_refresh(domain: str) -> str:
-        return f"{domain}:last_refresh"
+    def last_refresh(domain: str, department: Optional[str] = None) -> str:
+        dept = department or "default"
+        return f"{domain}:{dept}:last_refresh"
 
 
 # Global cache instance

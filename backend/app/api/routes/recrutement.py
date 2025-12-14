@@ -5,6 +5,7 @@ from typing import Optional
 
 from app.models.recrutement import RecrutementIndicators, VoeuStats
 from app.adapters.parcoursup import MockParcoursupAdapter, ParcoursupAdapter
+from app.api.deps import DepartmentDep
 from app.services import cache, CacheKeys
 from app.config import get_settings
 
@@ -18,6 +19,7 @@ _file_adapter = ParcoursupAdapter()
 
 @router.get("/indicators", response_model=RecrutementIndicators)
 async def get_recrutement_indicators(
+    department: DepartmentDep,
     annee: Optional[int] = Query(None, description="Année de recrutement"),
     refresh: bool = Query(False, description="Force cache refresh"),
 ):
@@ -27,7 +29,7 @@ async def get_recrutement_indicators(
     Returns statistics about candidates, acceptance rates, origins, etc.
     """
     try:
-        cache_key = CacheKeys.recrutement_indicators(annee)
+        cache_key = CacheKeys.recrutement_indicators(annee, department)
         
         # Try cache first (unless refresh requested)
         if not refresh:
@@ -52,7 +54,9 @@ async def get_recrutement_indicators(
 
 
 @router.get("/evolution", response_model=list[VoeuStats])
-async def get_evolution():
+async def get_evolution(
+    department: DepartmentDep,
+):
     """
     Get recruitment evolution over multiple years.
     """
@@ -62,6 +66,7 @@ async def get_evolution():
 
 @router.get("/par-bac")
 async def get_repartition_bac(
+    department: DepartmentDep,
     annee: Optional[int] = Query(None, description="Année"),
 ):
     """
@@ -77,6 +82,7 @@ async def get_repartition_bac(
 
 @router.get("/par-origine")
 async def get_repartition_origine(
+    department: DepartmentDep,
     annee: Optional[int] = Query(None, description="Année"),
 ):
     """
@@ -92,6 +98,7 @@ async def get_repartition_origine(
 
 @router.get("/top-lycees")
 async def get_top_lycees(
+    department: DepartmentDep,
     limit: int = Query(10, le=50, description="Number of results"),
 ):
     """
@@ -103,6 +110,7 @@ async def get_top_lycees(
 
 @router.post("/import")
 async def import_parcoursup_file(
+    department: DepartmentDep,
     file: UploadFile = File(..., description="Parcoursup CSV export file"),
     annee: int = Query(..., description="Année de recrutement"),
 ):

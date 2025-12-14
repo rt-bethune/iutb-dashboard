@@ -268,7 +268,7 @@ export function YearSelector({
     >
       <option value="">Toutes les années</option>
       {years.map(year => (
-        <option key={year} value={year}>{year}-{year + 1}</option>
+        <option key={year} value={`${year}-${year + 1}`}>{year}-{year + 1}</option>
       ))}
     </select>
   )

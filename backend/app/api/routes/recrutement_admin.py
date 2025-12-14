@@ -7,6 +7,7 @@ from datetime import date
 
 from app.database import get_db
 from app.crud import recrutement_crud
+from app.api.deps import DepartmentDep
 from app.schemas.recrutement import (
     CampagneCreate,
     CampagneUpdate,
@@ -31,15 +32,16 @@ router = APIRouter()
 
 @router.get("/campagnes", response_model=list[CampagneSummary])
 async def list_campagnes(
+    department: DepartmentDep,
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, le=100),
 ):
     """List all recruitment campaigns."""
-    campagnes = recrutement_crud.get_all_campagnes(db, skip=skip, limit=limit)
+    campagnes = recrutement_crud.get_all_campagnes(db, department, skip=skip, limit=limit)
     result = []
     for c in campagnes:
-        stats = recrutement_crud.get_parcoursup_stats(db, c.annee)
+        stats = recrutement_crud.get_parcoursup_stats(db, department, c.annee)
         nb_candidats = stats.nb_voeux if stats else 0
         nb_confirmes = stats.nb_confirmes if stats else 0
         taux = nb_confirmes / c.nb_places if c.nb_places > 0 else 0
@@ -57,15 +59,16 @@ async def list_campagnes(
 
 @router.get("/campagne/{annee}", response_model=CampagneResponse)
 async def get_campagne(
+    department: DepartmentDep,
     annee: int,
     db: Session = Depends(get_db),
 ):
     """Get campaign details for a specific year."""
-    campagne = recrutement_crud.get_campagne(db, annee)
+    campagne = recrutement_crud.get_campagne(db, department, annee)
     if not campagne:
         raise HTTPException(status_code=404, detail=f"Campagne {annee} non trouvée")
     
-    stats = recrutement_crud.get_parcoursup_stats(db, annee)
+    stats = recrutement_crud.get_parcoursup_stats(db, department, annee)
     
     return CampagneResponse(
         id=campagne.id,
@@ -86,38 +89,41 @@ async def get_campagne(
 
 @router.post("/campagne", response_model=CampagneResponse)
 async def create_campagne(
+    department: DepartmentDep,
     campagne: CampagneCreate,
     db: Session = Depends(get_db),
 ):
     """Create a new recruitment campaign."""
-    existing = recrutement_crud.get_campagne(db, campagne.annee)
+    existing = recrutement_crud.get_campagne(db, department, campagne.annee)
     if existing:
         raise HTTPException(status_code=400, detail=f"Campagne {campagne.annee} existe déjà")
     
-    db_campagne = recrutement_crud.create_campagne(db, campagne)
-    return await get_campagne(db_campagne.annee, db)
+    db_campagne = recrutement_crud.create_campagne(db, department, campagne)
+    return await get_campagne(department, db_campagne.annee, db)
 
 
 @router.put("/campagne/{annee}", response_model=CampagneResponse)
 async def update_campagne(
+    department: DepartmentDep,
     annee: int,
     campagne: CampagneUpdate,
     db: Session = Depends(get_db),
 ):
     """Update a campaign."""
-    db_campagne = recrutement_crud.update_campagne(db, annee, campagne)
+    db_campagne = recrutement_crud.update_campagne(db, department, annee, campagne)
     if not db_campagne:
         raise HTTPException(status_code=404, detail=f"Campagne {annee} non trouvée")
-    return await get_campagne(annee, db)
+    return await get_campagne(department, annee, db)
 
 
 @router.delete("/campagne/{annee}")
 async def delete_campagne(
+    department: DepartmentDep,
     annee: int,
     db: Session = Depends(get_db),
 ):
     """Delete a campaign and all its candidates."""
-    if not recrutement_crud.delete_campagne(db, annee):
+    if not recrutement_crud.delete_campagne(db, department, annee):
         raise HTTPException(status_code=404, detail=f"Campagne {annee} non trouvée")
     return {"message": f"Campagne {annee} supprimée"}
 
@@ -126,6 +132,7 @@ async def delete_campagne(
 
 @router.get("/campagne/{annee}/candidats", response_model=list[CandidatResponse])
 async def list_candidats(
+    department: DepartmentDep,
     annee: int,
     statut: Optional[str] = Query(None, pattern="^(en_attente|propose|accepte|refuse|confirme|desiste)$"),
     type_bac: Optional[str] = None,
@@ -134,7 +141,7 @@ async def list_candidats(
     db: Session = Depends(get_db),
 ):
     """List candidates for a campaign."""
-    campagne = recrutement_crud.get_campagne(db, annee)
+    campagne = recrutement_crud.get_campagne(db, department, annee)
     if not campagne:
         raise HTTPException(status_code=404, detail=f"Campagne {annee} non trouvée")
     
@@ -151,30 +158,33 @@ async def list_candidats(
 
 @router.post("/campagne/{annee}/candidat", response_model=CandidatResponse)
 async def create_candidat(
+    department: DepartmentDep,
     annee: int,
     candidat: CandidatCreate,
     db: Session = Depends(get_db),
 ):
     """Add a candidate to a campaign."""
-    campagne = recrutement_crud.get_or_create_campagne(db, annee)
+    campagne = recrutement_crud.get_or_create_campagne(db, department, annee)
     db_candidat = recrutement_crud.create_candidat(db, campagne.id, candidat)
     return CandidatResponse.model_validate(db_candidat)
 
 
 @router.post("/campagne/{annee}/candidats/bulk", response_model=dict)
 async def create_candidats_bulk(
+    department: DepartmentDep,
     annee: int,
     data: CandidatBulkCreate,
     db: Session = Depends(get_db),
 ):
     """Add multiple candidates to a campaign."""
-    campagne = recrutement_crud.get_or_create_campagne(db, annee)
+    campagne = recrutement_crud.get_or_create_campagne(db, department, annee)
     candidats = recrutement_crud.create_candidats_bulk(db, campagne.id, data.candidats)
     return {"message": f"{len(candidats)} candidats créés", "count": len(candidats)}
 
 
 @router.get("/candidat/{candidat_id}", response_model=CandidatResponse)
 async def get_candidat(
+    department: DepartmentDep,
     candidat_id: int,
     db: Session = Depends(get_db),
 ):
@@ -187,6 +197,7 @@ async def get_candidat(
 
 @router.put("/candidat/{candidat_id}", response_model=CandidatResponse)
 async def update_candidat(
+    department: DepartmentDep,
     candidat_id: int,
     candidat: CandidatUpdate,
     db: Session = Depends(get_db),
@@ -200,6 +211,7 @@ async def update_candidat(
 
 @router.delete("/candidat/{candidat_id}")
 async def delete_candidat(
+    department: DepartmentDep,
     candidat_id: int,
     db: Session = Depends(get_db),
 ):
@@ -213,6 +225,7 @@ async def delete_candidat(
 
 @router.post("/import/csv", response_model=ImportParcoursupResult)
 async def import_parcoursup_csv(
+    department: DepartmentDep,
     file: UploadFile = File(..., description="Parcoursup CSV export file"),
     annee: int = Query(..., description="Année de recrutement"),
     db: Session = Depends(get_db),
@@ -229,7 +242,7 @@ async def import_parcoursup_csv(
         )
     
     content = await file.read()
-    result = recrutement_crud.import_parcoursup_from_csv(db, content, annee)
+    result = recrutement_crud.import_parcoursup_from_csv(db, department, content, annee)
     
     if not result.success:
         raise HTTPException(status_code=400, detail=result.message)
@@ -239,6 +252,7 @@ async def import_parcoursup_csv(
 
 @router.post("/import/excel", response_model=ImportParcoursupResult)
 async def import_parcoursup_excel(
+    department: DepartmentDep,
     file: UploadFile = File(..., description="Parcoursup Excel file"),
     annee: int = Query(..., description="Année de recrutement"),
     db: Session = Depends(get_db),
@@ -253,7 +267,7 @@ async def import_parcoursup_excel(
         )
     
     content = await file.read()
-    result = recrutement_crud.import_parcoursup_from_excel(db, content, annee)
+    result = recrutement_crud.import_parcoursup_from_excel(db, department, content, annee)
     
     if not result.success:
         raise HTTPException(status_code=400, detail=result.message)
@@ -265,6 +279,7 @@ async def import_parcoursup_excel(
 
 @router.post("/stats/{annee}", response_model=ParcoursupStats)
 async def save_stats_direct(
+    department: DepartmentDep,
     annee: int,
     stats_input: ParcoursupStatsInput,
     db: Session = Depends(get_db),
@@ -275,6 +290,7 @@ async def save_stats_direct(
     """
     recrutement_crud.save_direct_stats(
         db, 
+        department,
         annee,
         nb_voeux=stats_input.nb_voeux,
         nb_acceptes=stats_input.nb_acceptes,
@@ -287,17 +303,18 @@ async def save_stats_direct(
         par_lycees=stats_input.par_lycees,
     )
     
-    stats = recrutement_crud.get_parcoursup_stats(db, annee)
+    stats = recrutement_crud.get_parcoursup_stats(db, department, annee)
     return stats
 
 
 @router.get("/stats/{annee}", response_model=ParcoursupStats)
 async def get_stats(
+    department: DepartmentDep,
     annee: int,
     db: Session = Depends(get_db),
 ):
     """Get Parcoursup statistics for a year."""
-    stats = recrutement_crud.get_parcoursup_stats(db, annee)
+    stats = recrutement_crud.get_parcoursup_stats(db, department, annee)
     if not stats:
         raise HTTPException(status_code=404, detail=f"Pas de données pour {annee}")
     return stats
@@ -305,17 +322,19 @@ async def get_stats(
 
 @router.get("/evolution", response_model=dict)
 async def get_evolution(
+    department: DepartmentDep,
     limit: int = Query(5, le=10),
     db: Session = Depends(get_db),
 ):
     """Get recruitment evolution over years."""
-    return recrutement_crud.get_evolution_recrutement(db, limit=limit)
+    return recrutement_crud.get_evolution_recrutement(db, department, limit=limit)
 
 
 # ==================== INDICATORS (pour dashboard) ====================
 
 @router.get("/indicators", response_model=RecrutementIndicators)
 async def get_recrutement_indicators(
+    department: DepartmentDep,
     annee: Optional[int] = Query(None, description="Année de recrutement"),
     db: Session = Depends(get_db),
 ):
@@ -327,13 +346,15 @@ async def get_recrutement_indicators(
     if annee is None:
         annee = date.today().year
     
-    stats = recrutement_crud.get_parcoursup_stats(db, annee)
+    stats = recrutement_crud.get_parcoursup_stats(db, department, annee)
     
     # If no stats for current year, try to get the latest available
     if not stats or stats.nb_voeux == 0:
-        latest_campagne = db.query(CampagneRecrutement).order_by(CampagneRecrutement.annee.desc()).first()
+        latest_campagne = db.query(CampagneRecrutement).filter(
+            CampagneRecrutement.department == department
+        ).order_by(CampagneRecrutement.annee.desc()).first()
         if latest_campagne:
-            stats = recrutement_crud.get_parcoursup_stats(db, latest_campagne.annee)
+            stats = recrutement_crud.get_parcoursup_stats(db, department, latest_campagne.annee)
             if stats:
                 annee = latest_campagne.annee
     
@@ -354,7 +375,7 @@ async def get_recrutement_indicators(
         )
     
     # Get evolution data
-    evolution_data = recrutement_crud.get_evolution_recrutement(db)
+    evolution_data = recrutement_crud.get_evolution_recrutement(db, department)
     evolution = []
     for i, year in enumerate(evolution_data.get("annees", [])):
         evolution.append(VoeuStats(

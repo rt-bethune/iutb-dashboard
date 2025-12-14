@@ -5,6 +5,7 @@ from typing import Optional
 
 from app.models.budget import BudgetIndicators, CategorieDepense
 from app.adapters.excel import MockExcelAdapter, ExcelAdapter
+from app.api.deps import DepartmentDep
 from app.services import cache, CacheKeys
 from app.config import get_settings
 
@@ -18,6 +19,7 @@ _file_adapter = ExcelAdapter()
 
 @router.get("/indicators", response_model=BudgetIndicators)
 async def get_budget_indicators(
+    department: DepartmentDep,
     annee: Optional[int] = Query(None, description="Année budgétaire"),
     refresh: bool = Query(False, description="Force cache refresh"),
 ):
@@ -27,7 +29,7 @@ async def get_budget_indicators(
     Returns totals, execution rates, and breakdown by category.
     """
     try:
-        cache_key = CacheKeys.budget_indicators(annee)
+        cache_key = CacheKeys.budget_indicators(annee, department)
         
         # Try cache first (unless refresh requested)
         if not refresh:
@@ -48,6 +50,7 @@ async def get_budget_indicators(
 
 @router.get("/par-categorie")
 async def get_budget_par_categorie(
+    department: DepartmentDep,
     annee: Optional[int] = Query(None, description="Année budgétaire"),
 ):
     """
@@ -73,6 +76,7 @@ async def get_budget_par_categorie(
 
 @router.get("/evolution")
 async def get_budget_evolution(
+    department: DepartmentDep,
     annee: Optional[int] = Query(None, description="Année budgétaire"),
 ):
     """
@@ -87,7 +91,9 @@ async def get_budget_evolution(
 
 
 @router.get("/execution")
-async def get_taux_execution():
+async def get_taux_execution(
+    department: DepartmentDep,
+):
     """
     Get budget execution rates.
     """
@@ -104,6 +110,7 @@ async def get_taux_execution():
 
 @router.get("/top-depenses")
 async def get_top_depenses(
+    department: DepartmentDep,
     limit: int = Query(10, le=50, description="Number of results"),
     categorie: Optional[CategorieDepense] = Query(None, description="Filter by category"),
 ):
@@ -121,6 +128,7 @@ async def get_top_depenses(
 
 @router.post("/import")
 async def import_budget_file(
+    department: DepartmentDep,
     file: UploadFile = File(..., description="Budget Excel file"),
     annee: int = Query(..., description="Année budgétaire"),
 ):

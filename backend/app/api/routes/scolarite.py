@@ -1,11 +1,12 @@
 """Scolarité API routes."""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Path
 from typing import Optional
 import logging
 
 from app.models.scolarite import ScolariteIndicators, Etudiant, ModuleStats
-from app.adapters.scodoc import ScoDocAdapter, MockScoDocAdapter, get_scodoc_adapter
+from app.adapters.scodoc import ScoDocAdapter, MockScoDocAdapter
+from app.api.deps import DepartmentDep, get_scodoc_adapter_for_department
 from app.services import cache, CacheKeys
 from app.config import get_settings
 
@@ -14,17 +15,12 @@ router = APIRouter()
 settings = get_settings()
 
 
-def _get_adapter():
+def _get_adapter(department: str):
     """Get the appropriate ScoDoc adapter based on configuration."""
     if all([settings.scodoc_base_url, settings.scodoc_username, 
-            settings.scodoc_password, settings.scodoc_department]):
-        logger.info("Using real ScoDoc adapter")
-        return ScoDocAdapter(
-            base_url=settings.scodoc_base_url,
-            username=settings.scodoc_username,
-            password=settings.scodoc_password,
-            department=settings.scodoc_department,
-        )
+            settings.scodoc_password]):
+        logger.info(f"Using real ScoDoc adapter for department {department}")
+        return get_scodoc_adapter_for_department(department)
     else:
         logger.info("Using mock ScoDoc adapter (credentials not configured)")
         return MockScoDocAdapter()
@@ -37,6 +33,7 @@ def _get_adapter():
     response_description="Indicateurs agrégés de scolarité"
 )
 async def get_scolarite_indicators(
+    department: DepartmentDep,
     annee: Optional[str] = Query(None, description="Année universitaire (ex: 2024-2025)", example="2024-2025"),
     refresh: bool = Query(False, description="Force le rafraîchissement du cache"),
 ):
@@ -54,9 +51,9 @@ async def get_scolarite_indicators(
     **Cache :** Données mises en cache pendant 1 heure.
     Utilisez `refresh=true` pour forcer la mise à jour.
     """
-    adapter = _get_adapter()
+    adapter = _get_adapter(department)
     try:
-        cache_key = CacheKeys.scolarite_indicators(annee)
+        cache_key = CacheKeys.scolarite_indicators(annee, department)
         
         # Try cache first (unless refresh requested)
         if not refresh:
@@ -72,7 +69,7 @@ async def get_scolarite_indicators(
         
         return data
     except Exception as e:
-        logger.error(f"Error fetching scolarite indicators: {e}")
+        logger.error(f"Error fetching scolarite indicators for {department}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if hasattr(adapter, 'close'):
@@ -86,6 +83,7 @@ async def get_scolarite_indicators(
     response_description="Liste des étudiants avec filtres optionnels"
 )
 async def get_etudiants(
+    department: DepartmentDep,
     formation: Optional[str] = Query(None, description="Filtrer par formation", example="BUT RT"),
     semestre: Optional[str] = Query(None, description="Filtrer par semestre", example="S1"),
     limit: int = Query(100, le=500, ge=1, description="Nombre maximum de résultats"),
@@ -98,7 +96,7 @@ async def get_etudiants(
     - `semestre` : Semestre (ex: "S1", "S2", ...)
     - `limit` : Limite le nombre de résultats (max 500)
     """
-    adapter = _get_adapter()
+    adapter = _get_adapter(department)
     try:
         # Try to get real students from ScoDoc
         if isinstance(adapter, ScoDocAdapter):
@@ -111,7 +109,7 @@ async def get_etudiants(
                     nom=f"Nom{i}",
                     prenom=f"Prénom{i}",
                     email=f"etudiant{i}@example.com",
-                    formation="BUT RT",
+                    formation=f"BUT {department}",
                     semestre=f"S{(i % 6) + 1}",
                     groupe=f"G{(i % 4) + 1}",
                 )
@@ -126,7 +124,7 @@ async def get_etudiants(
         
         return etudiants[:limit]
     except Exception as e:
-        logger.error(f"Error fetching etudiants: {e}")
+        logger.error(f"Error fetching etudiants for {department}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if hasattr(adapter, 'close'):
@@ -140,6 +138,7 @@ async def get_etudiants(
     response_description="Liste des statistiques par module"
 )
 async def get_modules_stats(
+    department: DepartmentDep,
     semestre: Optional[str] = Query(None, description="Filtrer par semestre", example="S1"),
 ):
     """
@@ -152,7 +151,7 @@ async def get_modules_stats(
     - Nombre d'étudiants
     - Écart-type, note min/max
     """
-    adapter = _get_adapter()
+    adapter = _get_adapter(department)
     try:
         # Get from indicators
         indicators = await adapter.get_data()
@@ -173,7 +172,9 @@ async def get_modules_stats(
     summary="Évolution des effectifs",
     response_description="Données d'évolution des effectifs"
 )
-async def get_effectifs_evolution():
+async def get_effectifs_evolution(
+    department: DepartmentDep,
+):
     """
     Récupère l'évolution des effectifs sur plusieurs années.
     
@@ -182,7 +183,7 @@ async def get_effectifs_evolution():
     - `par_formation` : Répartition par formation
     - `par_semestre` : Répartition par semestre
     """
-    adapter = _get_adapter()
+    adapter = _get_adapter(department)
     try:
         indicators = await adapter.get_data()
         return {
@@ -201,6 +202,7 @@ async def get_effectifs_evolution():
     response_description="Taux de réussite par semestre et module"
 )
 async def get_taux_reussite(
+    department: DepartmentDep,
     annee: Optional[str] = Query(None, description="Année universitaire", example="2024-2025"),
 ):
     """
@@ -211,7 +213,7 @@ async def get_taux_reussite(
     - `par_semestre` : Taux par semestre
     - `par_module` : Taux par module
     """
-    adapter = _get_adapter()
+    adapter = _get_adapter(department)
     try:
         indicators = await adapter.get_data()
         
@@ -234,7 +236,9 @@ async def get_taux_reussite(
     summary="État de la connexion ScoDoc",
     response_description="Vérifie la connexion à l'API ScoDoc"
 )
-async def check_scodoc_health():
+async def check_scodoc_health(
+    department: DepartmentDep,
+):
     """
     Vérifie l'état de la connexion à l'API ScoDoc.
     
@@ -244,7 +248,7 @@ async def check_scodoc_health():
     - `department` : Département configuré
     - `message` : Message d'erreur si applicable
     """
-    adapter = _get_adapter()
+    adapter = _get_adapter(department)
     try:
         is_real = isinstance(adapter, ScoDocAdapter)
         
@@ -253,21 +257,22 @@ async def check_scodoc_health():
             return {
                 "status": "ok" if health_ok else "error",
                 "source": "scodoc",
-                "department": settings.scodoc_department,
+                "department": department,
                 "base_url": settings.scodoc_base_url,
-                "message": "Connecté à ScoDoc" if health_ok else "Échec de connexion à ScoDoc"
+                "message": f"Connecté à ScoDoc ({department})" if health_ok else "Échec de connexion à ScoDoc"
             }
         else:
             return {
                 "status": "ok",
                 "source": "mock",
-                "department": None,
+                "department": department,
                 "message": "Utilisation des données de démonstration (ScoDoc non configuré)"
             }
     except Exception as e:
         return {
             "status": "error",
             "source": "unknown",
+            "department": department,
             "message": str(e)
         }
     finally:

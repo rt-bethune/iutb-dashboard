@@ -9,22 +9,25 @@ import ChartContainer from '@/components/ChartContainer'
 import DataTable from '@/components/DataTable'
 import ProgressBar from '@/components/ProgressBar'
 import { edtApi } from '@/services/api'
+import { useDepartment } from '../contexts/DepartmentContext'
 import type { ChargeEnseignant, OccupationSalle } from '@/types'
 
 export default function EDT() {
+  const { department } = useDepartment()
+
   const { data: indicators, isLoading } = useQuery({
-    queryKey: ['edt', 'indicators'],
-    queryFn: () => edtApi.getIndicators(),
+    queryKey: ['edt', 'indicators', department],
+    queryFn: () => edtApi.getIndicators(department),
   })
 
   const { data: repartition } = useQuery({
-    queryKey: ['edt', 'repartition'],
-    queryFn: edtApi.getRepartition,
+    queryKey: ['edt', 'repartition', department],
+    queryFn: () => edtApi.getRepartition(department),
   })
 
   const { data: heuresComp } = useQuery({
-    queryKey: ['edt', 'heures-complementaires'],
-    queryFn: edtApi.getHeuresComplementaires,
+    queryKey: ['edt', 'heures-complementaires', department],
+    queryFn: () => edtApi.getHeuresComplementaires(department),
   })
 
   if (isLoading) {

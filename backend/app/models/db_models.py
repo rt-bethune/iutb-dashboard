@@ -1,11 +1,19 @@
-"""SQLAlchemy database models for Budget and Recrutement."""
+"""SQLAlchemy database models for Budget, EDT and Recrutement.
 
-from sqlalchemy import Column, Integer, String, Float, Date, Enum, ForeignKey, Text
+All domain-specific data (budget, recrutement, EDT) is scoped by department.
+"""
+
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import date
 import enum
 
 from app.database import Base
+
+
+# ==================== DEPARTMENTS ====================
+
+DEPARTMENTS = ["RT", "GEII", "GCCD", "GMP", "QLIO", "CHIMIE"]
 
 
 # ==================== BUDGET MODELS ====================
@@ -22,15 +30,19 @@ class CategorieDepenseDB(str, enum.Enum):
 
 
 class BudgetAnnuel(Base):
-    """Annual budget configuration."""
+    """Annual budget configuration per department."""
     __tablename__ = "budget_annuel"
     
     id = Column(Integer, primary_key=True, index=True)
-    annee = Column(Integer, unique=True, index=True, nullable=False)
+    department = Column(String(20), index=True, nullable=False)  # RT, GEII, etc.
+    annee = Column(Integer, index=True, nullable=False)
     budget_total = Column(Float, default=0)
     previsionnel = Column(Float, default=0)
     date_creation = Column(Date, default=date.today)
     date_modification = Column(Date, default=date.today, onupdate=date.today)
+    
+    # Unique constraint: one budget per department per year
+    __table_args__ = (UniqueConstraint('department', 'annee', name='uq_budget_dept_annee'),)
     
     # Relations
     lignes = relationship("LigneBudgetDB", back_populates="budget_annuel", cascade="all, delete-orphan")
@@ -78,17 +90,21 @@ class DepenseDB(Base):
 # ==================== RECRUTEMENT/PARCOURSUP MODELS ====================
 
 class CampagneRecrutement(Base):
-    """Recruitment campaign (one per year)."""
+    """Recruitment campaign (one per year per department)."""
     __tablename__ = "campagne_recrutement"
     
     id = Column(Integer, primary_key=True, index=True)
-    annee = Column(Integer, unique=True, index=True, nullable=False)
+    department = Column(String(20), index=True, nullable=False)  # RT, GEII, etc.
+    annee = Column(Integer, index=True, nullable=False)
     nb_places = Column(Integer, default=0)
     date_debut = Column(Date, nullable=True)
     date_fin = Column(Date, nullable=True)
     rang_dernier_appele = Column(Integer, nullable=True)
     date_creation = Column(Date, default=date.today)
     date_modification = Column(Date, default=date.today, onupdate=date.today)
+    
+    # Unique constraint: one campaign per department per year
+    __table_args__ = (UniqueConstraint('department', 'annee', name='uq_campagne_dept_annee'),)
     
     # Relations
     candidats = relationship("CandidatDB", back_populates="campagne", cascade="all, delete-orphan")
@@ -133,11 +149,12 @@ class CandidatDB(Base):
 
 
 class StatistiquesParcoursup(Base):
-    """Aggregated yearly stats (for quick access)."""
+    """Aggregated yearly stats per department (for quick access)."""
     __tablename__ = "stats_parcoursup"
     
     id = Column(Integer, primary_key=True, index=True)
-    annee = Column(Integer, unique=True, index=True, nullable=False)
+    department = Column(String(20), index=True, nullable=False)  # RT, GEII, etc.
+    annee = Column(Integer, index=True, nullable=False)
     
     # Totaux
     nb_voeux = Column(Integer, default=0)
@@ -153,6 +170,65 @@ class StatistiquesParcoursup(Base):
     par_lycees = Column(Text, nullable=True)  # JSON - {"Lycée X": 10, ...}
     
     date_mise_a_jour = Column(Date, default=date.today)
+    
+    # Unique constraint: one stats record per department per year
+    __table_args__ = (UniqueConstraint('department', 'annee', name='uq_stats_dept_annee'),)
+
+
+# ==================== EDT MODELS ====================
+
+class EdtAnnuel(Base):
+    """Annual EDT/schedule data per department."""
+    __tablename__ = "edt_annuel"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    department = Column(String(20), index=True, nullable=False)
+    annee = Column(String(20), index=True, nullable=False)  # "2024-2025"
+    heures_prevues_total = Column(Float, default=0)
+    heures_effectuees_total = Column(Float, default=0)
+    date_creation = Column(Date, default=date.today)
+    date_modification = Column(Date, default=date.today, onupdate=date.today)
+    
+    __table_args__ = (UniqueConstraint('department', 'annee', name='uq_edt_dept_annee'),)
+    
+    # Relations
+    enseignants = relationship("EnseignantChargeDB", back_populates="edt_annuel", cascade="all, delete-orphan")
+    salles = relationship("SalleOccupationDB", back_populates="edt_annuel", cascade="all, delete-orphan")
+
+
+class EnseignantChargeDB(Base):
+    """Teacher workload per year."""
+    __tablename__ = "enseignant_charge"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    edt_annuel_id = Column(Integer, ForeignKey("edt_annuel.id"), nullable=False)
+    nom = Column(String(100), nullable=False)
+    prenom = Column(String(100), nullable=True)
+    statut = Column(String(50), default="permanent")  # permanent, vacataire, contractuel
+    heures_service = Column(Float, default=192)  # Heures dues (192h pour MCF, 384h pour PRAG)
+    heures_cm = Column(Float, default=0)
+    heures_td = Column(Float, default=0)
+    heures_tp = Column(Float, default=0)
+    heures_total = Column(Float, default=0)  # CM + TD + TP en équivalent TD
+    heures_complementaires = Column(Float, default=0)
+    
+    edt_annuel = relationship("EdtAnnuel", back_populates="enseignants")
+
+
+class SalleOccupationDB(Base):
+    """Room occupancy stats per year."""
+    __tablename__ = "salle_occupation"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    edt_annuel_id = Column(Integer, ForeignKey("edt_annuel.id"), nullable=False)
+    nom_salle = Column(String(50), nullable=False)
+    type_salle = Column(String(50), default="TD")  # Amphi, TD, TP, Labo
+    capacite = Column(Integer, default=30)
+    heures_occupees = Column(Float, default=0)
+    heures_disponibles = Column(Float, default=0)
+    taux_occupation = Column(Float, default=0)  # pourcentage
+    
+    edt_annuel = relationship("EdtAnnuel", back_populates="salles")
 
 
 # ==================== SYSTEM SETTINGS ====================

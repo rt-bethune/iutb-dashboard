@@ -11,6 +11,7 @@ import ChartContainer from '@/components/ChartContainer'
 import DataTable from '@/components/DataTable'
 import ProgressBar from '@/components/ProgressBar'
 import { adminBudgetApi } from '@/services/api'
+import { useDepartment } from '../contexts/DepartmentContext'
 
 interface CategorieItem {
   categorie: string
@@ -31,19 +32,20 @@ const formatCurrency = (value: number) => {
 }
 
 export default function Budget() {
+  const { department } = useDepartment()
   const [selectedYear, setSelectedYear] = useState<number | undefined>(undefined)
 
   // Fetch available years
   const { data: budgetYears } = useQuery({
-    queryKey: ['budget', 'years'],
-    queryFn: () => adminBudgetApi.getYears(),
+    queryKey: ['budget', 'years', department],
+    queryFn: () => adminBudgetApi.getYears(department),
   })
 
   const availableYears = (budgetYears ?? []).map((b: { annee: number }) => b.annee).sort((a: number, b: number) => b - a)
 
   const { data: indicators, isLoading } = useQuery({
-    queryKey: ['budget', 'indicators', selectedYear],
-    queryFn: () => adminBudgetApi.getIndicators(selectedYear),
+    queryKey: ['budget', 'indicators', department, selectedYear],
+    queryFn: () => adminBudgetApi.getIndicators(department, selectedYear),
   })
 
   if (isLoading) {

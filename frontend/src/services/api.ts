@@ -7,32 +7,39 @@ const api = axios.create({
   },
 })
 
+// Helper to build department-scoped URLs
+const withDept = (path: string, department: string) => `/${department}${path}`
+
 // Scolarité
 export const scolariteApi = {
-  getIndicators: () => api.get('/scolarite/indicators?refresh=true').then(res => res.data),
-  getEtudiants: (params?: { formation?: string; semestre?: string; limit?: number }) => 
-    api.get('/scolarite/etudiants', { params }).then(res => res.data),
-  getModules: (semestre?: string) => 
-    api.get('/scolarite/modules', { params: { semestre } }).then(res => res.data),
-  getEffectifs: () => api.get('/scolarite/effectifs').then(res => res.data),
-  getReussite: () => api.get('/scolarite/reussite').then(res => res.data),
+  getIndicators: (department: string, annee?: string) => 
+    api.get(withDept('/scolarite/indicators', department), { params: { annee } }).then(res => res.data),
+  getEtudiants: (department: string, params?: { formation?: string; semestre?: string; limit?: number }) => 
+    api.get(withDept('/scolarite/etudiants', department), { params }).then(res => res.data),
+  getModules: (department: string, semestre?: string) => 
+    api.get(withDept('/scolarite/modules', department), { params: { semestre } }).then(res => res.data),
+  getEffectifs: (department: string) => 
+    api.get(withDept('/scolarite/effectifs', department)).then(res => res.data),
+  getReussite: (department: string) => 
+    api.get(withDept('/scolarite/reussite', department)).then(res => res.data),
 }
 
 // Recrutement
 export const recrutementApi = {
-  getIndicators: (annee?: number) => 
-    api.get('/recrutement/indicators', { params: { annee } }).then(res => res.data),
-  getEvolution: () => api.get('/recrutement/evolution').then(res => res.data),
-  getParBac: (annee?: number) => 
-    api.get('/recrutement/par-bac', { params: { annee } }).then(res => res.data),
-  getParOrigine: (annee?: number) => 
-    api.get('/recrutement/par-origine', { params: { annee } }).then(res => res.data),
-  getTopLycees: (limit?: number) => 
-    api.get('/recrutement/top-lycees', { params: { limit } }).then(res => res.data),
-  importFile: (file: File, annee: number) => {
+  getIndicators: (department: string, annee?: number) => 
+    api.get(withDept('/recrutement/indicators', department), { params: { annee } }).then(res => res.data),
+  getEvolution: (department: string) => 
+    api.get(withDept('/recrutement/evolution', department)).then(res => res.data),
+  getParBac: (department: string, annee?: number) => 
+    api.get(withDept('/recrutement/par-bac', department), { params: { annee } }).then(res => res.data),
+  getParOrigine: (department: string, annee?: number) => 
+    api.get(withDept('/recrutement/par-origine', department), { params: { annee } }).then(res => res.data),
+  getTopLycees: (department: string, limit?: number) => 
+    api.get(withDept('/recrutement/top-lycees', department), { params: { limit } }).then(res => res.data),
+  importFile: (department: string, file: File, annee: number) => {
     const formData = new FormData()
     formData.append('file', file)
-    return api.post(`/recrutement/import?annee=${annee}`, formData, {
+    return api.post(withDept(`/recrutement/import?annee=${annee}`, department), formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(res => res.data)
   },
@@ -40,19 +47,20 @@ export const recrutementApi = {
 
 // Budget
 export const budgetApi = {
-  getIndicators: (annee?: number) => 
-    api.get('/budget/indicators', { params: { annee } }).then(res => res.data),
-  getParCategorie: (annee?: number) => 
-    api.get('/budget/par-categorie', { params: { annee } }).then(res => res.data),
-  getEvolution: (annee?: number) => 
-    api.get('/budget/evolution', { params: { annee } }).then(res => res.data),
-  getExecution: () => api.get('/budget/execution').then(res => res.data),
-  getTopDepenses: (limit?: number) => 
-    api.get('/budget/top-depenses', { params: { limit } }).then(res => res.data),
-  importFile: (file: File, annee: number) => {
+  getIndicators: (department: string, annee?: number) => 
+    api.get(withDept('/budget/indicators', department), { params: { annee } }).then(res => res.data),
+  getParCategorie: (department: string, annee?: number) => 
+    api.get(withDept('/budget/par-categorie', department), { params: { annee } }).then(res => res.data),
+  getEvolution: (department: string, annee?: number) => 
+    api.get(withDept('/budget/evolution', department), { params: { annee } }).then(res => res.data),
+  getExecution: (department: string) => 
+    api.get(withDept('/budget/execution', department)).then(res => res.data),
+  getTopDepenses: (department: string, limit?: number) => 
+    api.get(withDept('/budget/top-depenses', department), { params: { limit } }).then(res => res.data),
+  importFile: (department: string, file: File, annee: number) => {
     const formData = new FormData()
     formData.append('file', file)
-    return api.post(`/budget/import?annee=${annee}`, formData, {
+    return api.post(withDept(`/budget/import?annee=${annee}`, department), formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(res => res.data)
   },
@@ -60,64 +68,57 @@ export const budgetApi = {
 
 // EDT
 export const edtApi = {
-  getIndicators: (annee?: string) => 
-    api.get('/edt/indicators', { params: { annee } }).then(res => res.data),
-  getCharges: (enseignant?: string) => 
-    api.get('/edt/charges', { params: { enseignant } }).then(res => res.data),
-  getOccupation: (salle?: string) => 
-    api.get('/edt/occupation', { params: { salle } }).then(res => res.data),
-  getRepartition: () => api.get('/edt/repartition').then(res => res.data),
-  getHeuresComplementaires: () => api.get('/edt/heures-complementaires').then(res => res.data),
-  getParModule: () => api.get('/edt/par-module').then(res => res.data),
-  importFile: (file: File, annee?: string) => {
+  getIndicators: (department: string, annee?: string) => 
+    api.get(withDept('/edt/indicators', department), { params: { annee } }).then(res => res.data),
+  getCharges: (department: string, enseignant?: string) => 
+    api.get(withDept('/edt/charges', department), { params: { enseignant } }).then(res => res.data),
+  getOccupation: (department: string, salle?: string) => 
+    api.get(withDept('/edt/occupation', department), { params: { salle } }).then(res => res.data),
+  getRepartition: (department: string) => 
+    api.get(withDept('/edt/repartition', department)).then(res => res.data),
+  getHeuresComplementaires: (department: string) => 
+    api.get(withDept('/edt/heures-complementaires', department)).then(res => res.data),
+  getParModule: (department: string) => 
+    api.get(withDept('/edt/par-module', department)).then(res => res.data),
+  importFile: (department: string, file: File, annee?: string) => {
     const formData = new FormData()
     formData.append('file', file)
-    return api.post('/edt/import', formData, {
+    return api.post(withDept('/edt/import', department), formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { annee },
     }).then(res => res.data)
   },
 }
 
-// Upload
+// Upload (department-scoped)
 export const uploadApi = {
-  uploadFile: (file: File, type: string, description?: string) => {
+  uploadFile: (department: string, file: File, type: string, description?: string) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('type', type)
     if (description) formData.append('description', description)
-    return api.post('/upload/file', formData, {
+    return api.post(withDept('/upload/file', department), formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(res => res.data)
   },
-  listFiles: (type?: string) =>
-    api.get('/upload/files', { params: { type } }).then(res => res.data),
-  deleteFile: (filename: string, type: string) =>
-    api.delete(`/upload/file/${type}/${filename}`).then(res => res.data),
-  downloadFile: (filename: string, type: string) =>
-    api.get(`/upload/download/${type}/${filename}`, { responseType: 'blob' }),
+  listFiles: (department: string, type?: string) =>
+    api.get(withDept('/upload/files', department), { params: { type } }).then(res => res.data),
+  deleteFile: (department: string, filename: string, type: string) =>
+    api.delete(withDept(`/upload/file/${type}/${filename}`, department)).then(res => res.data),
+  downloadFile: (department: string, filename: string, type: string) =>
+    api.get(withDept(`/upload/download/${type}/${filename}`, department), { responseType: 'blob' }),
 }
 
-// Admin
+// Admin (global - not department-scoped)
 export const adminApi = {
   // Dashboard
   getDashboard: () => api.get('/admin/dashboard').then(res => res.data),
   
-  // Sources
+  // Sources (read-only for now)
   getSources: (type?: string) => 
     api.get('/admin/sources', { params: { type } }).then(res => res.data),
   getSource: (id: string) => 
     api.get(`/admin/sources/${id}`).then(res => res.data),
-  createSource: (data: any) => 
-    api.post('/admin/sources', data).then(res => res.data),
-  updateSource: (id: string, data: any) => 
-    api.put(`/admin/sources/${id}`, data).then(res => res.data),
-  deleteSource: (id: string) => 
-    api.delete(`/admin/sources/${id}`).then(res => res.data),
-  syncSource: (id: string) => 
-    api.post(`/admin/sources/${id}/sync`).then(res => res.data),
-  testSource: (id: string) => 
-    api.post(`/admin/sources/${id}/test`).then(res => res.data),
   
   // Settings
   getSettings: () => api.get('/admin/settings').then(res => res.data),
@@ -133,95 +134,102 @@ export const adminApi = {
   getJobs: () => api.get('/admin/jobs').then(res => res.data),
   runJob: (id: string) => 
     api.post(`/admin/jobs/${id}/run`).then(res => res.data),
-  
-  // Logs
-  getLogs: (limit?: number, status?: string) => 
-    api.get('/admin/logs', { params: { limit, status } }).then(res => res.data),
 }
 
-// Admin Budget CRUD
+// Admin Budget CRUD (department-scoped)
 export const adminBudgetApi = {
   // Budget years
-  getYears: () => api.get('/admin/budget/years').then(res => res.data),
-  getYear: (annee: number) => api.get(`/admin/budget/year/${annee}`).then(res => res.data),
-  createYear: (data: { annee: number; budget_total?: number; previsionnel?: number; lignes?: any[] }) =>
-    api.post('/admin/budget/year', data).then(res => res.data),
-  updateYear: (annee: number, data: { budget_total?: number; previsionnel?: number }) =>
-    api.put(`/admin/budget/year/${annee}`, data).then(res => res.data),
-  deleteYear: (annee: number) => api.delete(`/admin/budget/year/${annee}`).then(res => res.data),
+  getYears: (department: string) => 
+    api.get(withDept('/admin/budget/years', department)).then(res => res.data),
+  getYear: (department: string, annee: number) => 
+    api.get(withDept(`/admin/budget/year/${annee}`, department)).then(res => res.data),
+  createYear: (department: string, data: { annee: number; budget_total?: number; previsionnel?: number; lignes?: any[] }) =>
+    api.post(withDept('/admin/budget/year', department), data).then(res => res.data),
+  updateYear: (department: string, annee: number, data: { budget_total?: number; previsionnel?: number }) =>
+    api.put(withDept(`/admin/budget/year/${annee}`, department), data).then(res => res.data),
+  deleteYear: (department: string, annee: number) => 
+    api.delete(withDept(`/admin/budget/year/${annee}`, department)).then(res => res.data),
   
   // Budget lines
-  createLigne: (annee: number, data: { categorie: string; budget_initial: number; budget_modifie?: number; engage?: number; paye?: number }) =>
-    api.post(`/admin/budget/year/${annee}/ligne`, data).then(res => res.data),
-  updateLigne: (ligneId: number, data: { budget_initial?: number; budget_modifie?: number; engage?: number; paye?: number }) =>
-    api.put(`/admin/budget/ligne/${ligneId}`, data).then(res => res.data),
-  deleteLigne: (ligneId: number) => api.delete(`/admin/budget/ligne/${ligneId}`).then(res => res.data),
+  createLigne: (department: string, annee: number, data: { categorie: string; budget_initial: number; budget_modifie?: number; engage?: number; paye?: number }) =>
+    api.post(withDept(`/admin/budget/year/${annee}/ligne`, department), data).then(res => res.data),
+  updateLigne: (department: string, ligneId: number, data: { budget_initial?: number; budget_modifie?: number; engage?: number; paye?: number }) =>
+    api.put(withDept(`/admin/budget/ligne/${ligneId}`, department), data).then(res => res.data),
+  deleteLigne: (department: string, ligneId: number) => 
+    api.delete(withDept(`/admin/budget/ligne/${ligneId}`, department)).then(res => res.data),
   
   // Depenses
-  getDepenses: (annee: number, params?: { categorie?: string; statut?: string; limit?: number }) =>
-    api.get(`/admin/budget/year/${annee}/depenses`, { params }).then(res => res.data),
-  createDepense: (annee: number, data: { libelle: string; montant: number; categorie: string; date_depense: string; fournisseur?: string; numero_commande?: string; statut?: string }) =>
-    api.post(`/admin/budget/year/${annee}/depense`, data).then(res => res.data),
-  updateDepense: (depenseId: number, data: any) =>
-    api.put(`/admin/budget/depense/${depenseId}`, data).then(res => res.data),
-  deleteDepense: (depenseId: number) => api.delete(`/admin/budget/depense/${depenseId}`).then(res => res.data),
+  getDepenses: (department: string, annee: number, params?: { categorie?: string; statut?: string; limit?: number }) =>
+    api.get(withDept(`/admin/budget/year/${annee}/depenses`, department), { params }).then(res => res.data),
+  createDepense: (department: string, annee: number, data: { libelle: string; montant: number; categorie: string; date_depense: string; fournisseur?: string; numero_commande?: string; statut?: string }) =>
+    api.post(withDept(`/admin/budget/year/${annee}/depense`, department), data).then(res => res.data),
+  updateDepense: (department: string, depenseId: number, data: any) =>
+    api.put(withDept(`/admin/budget/depense/${depenseId}`, department), data).then(res => res.data),
+  deleteDepense: (department: string, depenseId: number) => 
+    api.delete(withDept(`/admin/budget/depense/${depenseId}`, department)).then(res => res.data),
   
   // Import
-  importFile: (file: File, annee: number) => {
+  importFile: (department: string, file: File, annee: number) => {
     const formData = new FormData()
     formData.append('file', file)
-    return api.post(`/admin/budget/import?annee=${annee}`, formData, {
+    return api.post(withDept(`/admin/budget/import?annee=${annee}`, department), formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(res => res.data)
   },
   
   // Indicators (from DB)
-  getIndicators: (annee?: number) =>
-    api.get('/admin/budget/indicators', { params: { annee } }).then(res => res.data),
+  getIndicators: (department: string, annee?: number) =>
+    api.get(withDept('/admin/budget/indicators', department), { params: { annee } }).then(res => res.data),
 }
 
-// Admin Recrutement CRUD
+// Admin Recrutement CRUD (department-scoped)
 export const adminRecrutementApi = {
   // Campagnes
-  getCampagnes: () => api.get('/admin/recrutement/campagnes').then(res => res.data),
-  getCampagne: (annee: number) => api.get(`/admin/recrutement/campagne/${annee}`).then(res => res.data),
-  createCampagne: (data: { annee: number; nb_places?: number; date_debut?: string; date_fin?: string }) =>
-    api.post('/admin/recrutement/campagne', data).then(res => res.data),
-  updateCampagne: (annee: number, data: { nb_places?: number; date_debut?: string; date_fin?: string; rang_dernier_appele?: number }) =>
-    api.put(`/admin/recrutement/campagne/${annee}`, data).then(res => res.data),
-  deleteCampagne: (annee: number) => api.delete(`/admin/recrutement/campagne/${annee}`).then(res => res.data),
+  getCampagnes: (department: string) => 
+    api.get(withDept('/admin/recrutement/campagnes', department)).then(res => res.data),
+  getCampagne: (department: string, annee: number) => 
+    api.get(withDept(`/admin/recrutement/campagne/${annee}`, department)).then(res => res.data),
+  createCampagne: (department: string, data: { annee: number; nb_places?: number; date_debut?: string; date_fin?: string }) =>
+    api.post(withDept('/admin/recrutement/campagne', department), data).then(res => res.data),
+  updateCampagne: (department: string, annee: number, data: { nb_places?: number; date_debut?: string; date_fin?: string; rang_dernier_appele?: number }) =>
+    api.put(withDept(`/admin/recrutement/campagne/${annee}`, department), data).then(res => res.data),
+  deleteCampagne: (department: string, annee: number) => 
+    api.delete(withDept(`/admin/recrutement/campagne/${annee}`, department)).then(res => res.data),
   
   // Candidats
-  getCandidats: (annee: number, params?: { statut?: string; type_bac?: string; limit?: number }) =>
-    api.get(`/admin/recrutement/campagne/${annee}/candidats`, { params }).then(res => res.data),
-  getCandidat: (id: number) => api.get(`/admin/recrutement/candidat/${id}`).then(res => res.data),
-  createCandidat: (annee: number, data: { type_bac: string; mention_bac?: string; departement_origine?: string; lycee?: string; statut?: string }) =>
-    api.post(`/admin/recrutement/campagne/${annee}/candidat`, data).then(res => res.data),
-  createCandidatsBulk: (annee: number, candidats: any[]) =>
-    api.post(`/admin/recrutement/campagne/${annee}/candidats/bulk`, { candidats }).then(res => res.data),
-  updateCandidat: (id: number, data: any) =>
-    api.put(`/admin/recrutement/candidat/${id}`, data).then(res => res.data),
-  deleteCandidat: (id: number) => api.delete(`/admin/recrutement/candidat/${id}`).then(res => res.data),
+  getCandidats: (department: string, annee: number, params?: { statut?: string; type_bac?: string; limit?: number }) =>
+    api.get(withDept(`/admin/recrutement/campagne/${annee}/candidats`, department), { params }).then(res => res.data),
+  getCandidat: (department: string, id: number) => 
+    api.get(withDept(`/admin/recrutement/candidat/${id}`, department)).then(res => res.data),
+  createCandidat: (department: string, annee: number, data: { type_bac: string; mention_bac?: string; departement_origine?: string; lycee?: string; statut?: string }) =>
+    api.post(withDept(`/admin/recrutement/campagne/${annee}/candidat`, department), data).then(res => res.data),
+  createCandidatsBulk: (department: string, annee: number, candidats: any[]) =>
+    api.post(withDept(`/admin/recrutement/campagne/${annee}/candidats/bulk`, department), { candidats }).then(res => res.data),
+  updateCandidat: (department: string, id: number, data: any) =>
+    api.put(withDept(`/admin/recrutement/candidat/${id}`, department), data).then(res => res.data),
+  deleteCandidat: (department: string, id: number) => 
+    api.delete(withDept(`/admin/recrutement/candidat/${id}`, department)).then(res => res.data),
   
   // Import
-  importCsv: (file: File, annee: number) => {
+  importCsv: (department: string, file: File, annee: number) => {
     const formData = new FormData()
     formData.append('file', file)
-    return api.post(`/admin/recrutement/import/csv?annee=${annee}`, formData, {
+    return api.post(withDept(`/admin/recrutement/import/csv?annee=${annee}`, department), formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(res => res.data)
   },
-  importExcel: (file: File, annee: number) => {
+  importExcel: (department: string, file: File, annee: number) => {
     const formData = new FormData()
     formData.append('file', file)
-    return api.post(`/admin/recrutement/import/excel?annee=${annee}`, formData, {
+    return api.post(withDept(`/admin/recrutement/import/excel?annee=${annee}`, department), formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(res => res.data)
   },
   
   // Stats & Indicators
-  getStats: (annee: number) => api.get(`/admin/recrutement/stats/${annee}`).then(res => res.data),
-  saveStats: (annee: number, data: {
+  getStats: (department: string, annee: number) => 
+    api.get(withDept(`/admin/recrutement/stats/${annee}`, department)).then(res => res.data),
+  saveStats: (department: string, annee: number, data: {
     nb_voeux: number;
     nb_acceptes: number;
     nb_confirmes: number;
@@ -231,10 +239,16 @@ export const adminRecrutementApi = {
     par_mention?: Record<string, number>;
     par_origine?: Record<string, number>;
     par_lycees?: Record<string, number>;
-  }) => api.post(`/admin/recrutement/stats/${annee}`, data).then(res => res.data),
-  getEvolution: (limit?: number) => api.get('/admin/recrutement/evolution', { params: { limit } }).then(res => res.data),
-  getIndicators: (annee?: number) =>
-    api.get('/admin/recrutement/indicators', { params: { annee } }).then(res => res.data),
+  }) => api.post(withDept(`/admin/recrutement/stats/${annee}`, department), data).then(res => res.data),
+  getEvolution: (department: string, limit?: number) => 
+    api.get(withDept('/admin/recrutement/evolution', department), { params: { limit } }).then(res => res.data),
+  getIndicators: (department: string, annee?: number) =>
+    api.get(withDept('/admin/recrutement/indicators', department), { params: { annee } }).then(res => res.data),
+}
+
+// Departments endpoint (global)
+export const departmentsApi = {
+  getAll: () => api.get('/departments').then(res => res.data),
 }
 
 export default api

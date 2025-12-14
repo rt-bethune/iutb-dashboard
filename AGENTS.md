@@ -233,6 +233,21 @@ async def test_get_scolarite_indicators(client: AsyncClient):
 
 ## 🚀 Commandes utiles
 
+### Environnement virtuel Python
+
+Le backend utilise un virtualenv situé dans `backend/venv/` (pas `.venv`).
+
+```bash
+# Activer l'environnement
+source backend/venv/bin/activate
+
+# Ou utiliser directement le Python du venv
+backend/venv/bin/python -m <module>
+
+# Lancer uvicorn avec le bon Python
+backend/venv/bin/python -m uvicorn app.main:app --reload --port 8000 --app-dir backend
+```
+
 ### Développement
 
 ```bash

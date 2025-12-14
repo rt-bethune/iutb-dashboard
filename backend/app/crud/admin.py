@@ -1,8 +1,7 @@
 """CRUD operations for Admin settings and data sources."""
 
-import json
 from typing import Optional
-from datetime import datetime, date
+from datetime import date
 from sqlalchemy.orm import Session
 
 from app.models.db_models import SystemSettingsDB, DataSourceDB
@@ -12,7 +11,6 @@ from app.models.db_models import SystemSettingsDB, DataSourceDB
 
 DEFAULT_SETTINGS = {
     "dashboard_title": ("Dashboard Département", "Titre affiché en haut du dashboard"),
-    "department_name": ("Département RT", "Nom du département"),
     "academic_year": ("2024-2025", "Année universitaire en cours"),
     "cache_enabled": ("true", "Activer le cache Redis"),
     "cache_ttl_default": ("3600", "TTL du cache par défaut (secondes)"),

@@ -133,46 +133,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include routers with department prefix
+# Department-scoped routes: /api/{department}/...
 app.include_router(
     scolarite.router,
-    prefix=f"{settings.api_prefix}/scolarite",
+    prefix=f"{settings.api_prefix}/{{department}}/scolarite",
     tags=["Scolarité"],
 )
 app.include_router(
     recrutement.router,
-    prefix=f"{settings.api_prefix}/recrutement",
+    prefix=f"{settings.api_prefix}/{{department}}/recrutement",
     tags=["Recrutement"],
 )
 app.include_router(
     budget.router,
-    prefix=f"{settings.api_prefix}/budget",
+    prefix=f"{settings.api_prefix}/{{department}}/budget",
     tags=["Budget"],
 )
 app.include_router(
     edt.router,
-    prefix=f"{settings.api_prefix}/edt",
+    prefix=f"{settings.api_prefix}/{{department}}/edt",
     tags=["EDT"],
 )
 app.include_router(
     upload.router,
-    prefix=f"{settings.api_prefix}/upload",
+    prefix=f"{settings.api_prefix}/{{department}}/upload",
     tags=["Upload"],
 )
-app.include_router(
-    admin.router,
-    prefix=f"{settings.api_prefix}/admin",
-    tags=["Administration"],
-)
+
+# Department-scoped admin routes for budget and recrutement
 app.include_router(
     budget_admin.router,
-    prefix=f"{settings.api_prefix}/admin/budget",
+    prefix=f"{settings.api_prefix}/{{department}}/admin/budget",
     tags=["Admin Budget"],
 )
 app.include_router(
     recrutement_admin.router,
-    prefix=f"{settings.api_prefix}/admin/recrutement",
+    prefix=f"{settings.api_prefix}/{{department}}/admin/recrutement",
     tags=["Admin Recrutement"],
+)
+
+# Global admin routes (not department-scoped): sources, settings, cache, jobs, logs
+app.include_router(
+    admin.router,
+    prefix=f"{settings.api_prefix}/admin",
+    tags=["Administration"],
 )
 
 
@@ -187,6 +192,19 @@ async def root():
         "name": settings.app_name,
         "version": settings.app_version,
         "status": "running",
+    }
+
+
+@app.get("/api/departments", tags=["Health"], summary="Liste des départements")
+async def get_departments():
+    """
+    Liste des départements disponibles.
+    
+    Retourne la liste des codes de départements supportés.
+    """
+    return {
+        "departments": ["RT", "GEII", "GCCD", "GMP", "QLIO", "CHIMIE"],
+        "default": "RT",
     }
 
 
