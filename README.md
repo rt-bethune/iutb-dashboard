@@ -1,183 +1,97 @@
-# Dashboard Département
+<div align="center">
 
-Tableau de bord modulaire pour un département d'enseignement, permettant de centraliser et visualiser les données de plusieurs sources.
+# 🎓 Dept-Dashboard
 
-## 🚀 Fonctionnalités
+**Tableau de bord moderne pour les départements d'IUT**
 
-- **Scolarité** : Effectifs, notes, taux de réussite, absentéisme (via ScoDoc)
-- **Recrutement** : Analyse des candidatures Parcoursup
-- **Budget** : Suivi budgétaire par catégorie
-- **EDT** : Charges enseignants, occupation des salles
+*Visualisez vos données de scolarité, recrutement et budget en un coup d'œil*
 
-## 🏗️ Architecture
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 
-```
-┌─────────────────────────────────────────────┐
-│           Frontend React + Vite             │
-└───────────────────┬─────────────────────────┘
-                    │ REST API
-┌───────────────────▼─────────────────────────┐
-│          API FastAPI (Python)               │
-└───────────────────┬─────────────────────────┘
-                    │
-┌───────────────────▼─────────────────────────┐
-│            Adapters (Plugins)               │
-│  ScoDoc │ Parcoursup │ Excel │ Apogée       │
-└─────────────────────────────────────────────┘
-```
+</div>
 
-## 📦 Installation
+---
 
-### Prérequis
+![Dashboard Principal](screenshots/main.png)
 
-- Python 3.11+
-- Node.js 20+
-- (Optionnel) Docker & Docker Compose
+## ✨ Fonctionnalités
 
-### Backend
+| Module | Description |
+|--------|-------------|
+| 📊 **Scolarité** | Effectifs, taux de réussite, notes par semestre via ScoDoc |
+| 🎯 **Recrutement** | Statistiques Parcoursup, profils des candidats admis |
+| 💰 **Budget** | Suivi des dépenses, répartition par catégorie |
+| 📅 **EDT** | Charges enseignantes, occupation des salles |
+| 🔐 **Multi-départements** | Authentification CAS, permissions granulaires |
+
+## 🚀 Démarrage rapide
 
 ```bash
-cd backend
+# Cloner le projet
+git clone https://github.com/votre-repo/dept-dashboard.git && cd dept-dashboard
 
-# Créer un environnement virtuel
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# ou: venv\Scripts\activate  # Windows
-
-# Installer les dépendances
-pip install -r requirements.txt
-
-# Copier et configurer les variables d'environnement
-cp .env.example .env
-# Éditer .env avec vos paramètres
-
-# Lancer le serveur
-uvicorn app.main:app --reload
+# Lancer avec Docker
+docker-compose up --build
 ```
 
-Le backend sera accessible sur http://localhost:8000
+| Service | URL |
+|---------|-----|
+| 🖥️ Frontend | http://localhost:5173 |
+| ⚡ API | http://localhost:8000 |
+| 📚 Documentation | http://localhost:8000/docs |
 
-- Documentation API : http://localhost:8000/docs
-- Documentation alternative : http://localhost:8000/redoc
+## 🛠️ Stack technique
 
-### Frontend
-
-```bash
-cd frontend
-
-# Installer les dépendances
-npm install
-
-# Lancer le serveur de développement
-npm run dev
+```
+Frontend (React/Vite/TS) → FastAPI Backend → Adapters → Sources de données
+                               ↓
+                    PostgreSQL + Redis (cache)
 ```
 
-Le frontend sera accessible sur http://localhost:5173
+| Couche | Technologies |
+|--------|-------------|
+| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, Recharts |
+| **Backend** | FastAPI, Python 3.11+, Pydantic v2, SQLAlchemy |
+| **Base de données** | PostgreSQL (prod) / SQLite (dev) |
+| **Cache** | Redis 7 |
 
-### Docker (Production)
+## 📁 Structure
 
-```bash
-# Copier et configurer les variables
-cp backend/.env.example .env
-
-# Lancer avec Docker Compose
-docker-compose up -d
 ```
-
-- Frontend : http://localhost:3000
-- API : http://localhost:8000
+├── backend/           # API FastAPI
+│   ├── app/
+│   │   ├── api/       # Routes & authentification
+│   │   ├── adapters/  # Connecteurs (ScoDoc, Parcoursup, Excel)
+│   │   └── models/    # Modèles Pydantic & SQLAlchemy
+│   └── alembic/       # Migrations DB
+├── frontend/          # Application React
+│   └── src/
+│       ├── pages/     # Pages du dashboard
+│       └── components/
+└── docker-compose.yml
+```
 
 ## 🔧 Configuration
 
-### Variables d'environnement
-
-| Variable | Description | Exemple |
-|----------|-------------|---------|
-| `SCODOC_BASE_URL` | URL de l'API ScoDoc | `https://scodoc.example.fr` |
-| `SCODOC_USERNAME` | Utilisateur ScoDoc | `admin` |
-| `SCODOC_PASSWORD` | Mot de passe ScoDoc | `****` |
-| `SCODOC_DEPARTMENT` | Code département | `RT` |
-| `SECRET_KEY` | Clé secrète JWT | `your-secret-key` |
-| `DATABASE_URL` | URL de la base de données | `sqlite:///./data/dashboard.db` |
-| `CAS_USE_MOCK` | Activer l'authentification de développement | `true` ou `false` |
-| `CAS_SERVICE_URL` | URL de callback CAS | `http://localhost:8000/api/auth/cas/callback` |
-
-### Sources de données
-
-Le système utilise des **adapters** modulaires :
-
-1. **ScoDoc** : API REST native (recommandé)
-2. **Parcoursup** : Import de fichiers CSV
-3. **Budget** : Import de fichiers Excel
-4. **EDT** : Import de fichiers Excel
-
-## 📊 API Endpoints
-
-### Scolarité (`/api/scolarite`)
-- `GET /indicators` - Indicateurs globaux
-- `GET /etudiants` - Liste des étudiants
-- `GET /modules` - Statistiques par module
-- `GET /effectifs` - Évolution des effectifs
-
-### Recrutement (`/api/recrutement`)
-- `GET /indicators` - Indicateurs globaux
-- `GET /evolution` - Évolution sur plusieurs années
-- `GET /par-bac` - Répartition par type de bac
-- `POST /import` - Import fichier Parcoursup
-
-### Budget (`/api/budget`)
-- `GET /indicators` - Indicateurs globaux
-- `GET /par-categorie` - Détail par catégorie
-- `GET /evolution` - Évolution mensuelle
-- `POST /import` - Import fichier Excel
-
-### EDT (`/api/edt`)
-- `GET /indicators` - Indicateurs globaux
-- `GET /charges` - Charges par enseignant
-- `GET /occupation` - Occupation des salles
-- `POST /import` - Import fichier Excel
-
-## 🛠️ Développement
-
-### Structure du projet
-
-```
-Dept-Dashboard/
-├── backend/
-│   ├── app/
-│   │   ├── api/routes/     # Routes FastAPI
-│   │   ├── adapters/       # Connecteurs de données
-│   │   ├── models/         # Modèles Pydantic
-│   │   └── services/       # Logique métier
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── components/     # Composants React
-│   │   ├── pages/          # Pages du dashboard
-│   │   ├── services/       # Client API
-│   │   └── types/          # Types TypeScript
-│   └── package.json
-├── docker-compose.yml
-└── plan.md                 # Plan du projet
+```bash
+cp .env.prod.example .env
 ```
 
-### Ajouter un nouvel adapter
+```env
+SECRET_KEY=votre-clé-secrète
+CAS_USE_MOCK=true              # Mode développement
+DATABASE_URL=sqlite:///./data/dashboard.db
+```
 
-1. Créer le fichier dans `backend/app/adapters/`
-2. Hériter de `BaseAdapter` ou `FileAdapter`
-3. Implémenter les méthodes requises
-4. Enregistrer dans `api/deps.py`
+## 📖 Documentation
 
-### Ajouter une nouvelle page
-
-1. Créer le fichier dans `frontend/src/pages/`
-2. Ajouter la route dans `App.tsx`
-3. Ajouter le lien dans `Layout.tsx`
-
-## 📝 Roadmap
-
-Voir [plan.md](plan.md) pour le détail du plan de projet.
+- 📘 [Guide de déploiement](DEPLOY.md)
+- 📗 [Documentation technique](AGENTS.md)
+- 📙 [Plan du projet](plan.md)
 
 ## 📄 Licence
 
-MIT
+MIT © 2025
