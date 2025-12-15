@@ -2,7 +2,7 @@
 
 ## 📋 Vue d'ensemble
 
-Dashboard modulaire pour un département d'enseignement permettant de centraliser et visualiser les données de plusieurs sources (ScoDoc, Apogée, Parcoursup, fichiers Excel) avec des indicateurs sur la scolarité, le recrutement, le budget et les emplois du temps.
+Dashboard modulaire pour un département d'enseignement permettant de centraliser et visualiser les données de plusieurs sources (ScoDoc, Parcoursup, fichiers Excel — Apogée envisagé) avec des indicateurs sur la scolarité, le recrutement, le budget et les emplois du temps.
 
 ---
 
@@ -10,21 +10,21 @@ Dashboard modulaire pour un département d'enseignement permettant de centralise
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│           Frontend React + Vite + shadcn/ui            │
-│         (Charts, Tableaux, Indicateurs KPI)            │
+│        Frontend React + Vite + Tailwind + Recharts     │
+│  Auth (CAS/JWT), context département, pages métier     │
 └───────────────────────┬────────────────────────────────┘
                         │ REST API
 ┌───────────────────────▼────────────────────────────────┐
-│              API d'Agrégation (FastAPI)                │
-│    /api/scolarite  /api/recrutement  /api/budget       │
+│             API d'Agrégation (FastAPI)                 │
+│  /api/{dept}/scolarite · /recrutement · /budget · /edt │
 └───────────────────────┬────────────────────────────────┘
                         │
 ┌───────────────────────▼────────────────────────────────┐
-│              Couche Adapters (Pattern Plugin)          │
-│  ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌────────────┐   │
-│  │ ScoDoc  │ │ Apogée  │ │Parcoursup│ │Excel/CSV   │   │
-│  │Adapter  │ │Adapter  │ │ Adapter  │ │  Adapter   │   │
-│  └─────────┘ └─────────┘ └──────────┘ └────────────┘   │
+│             Couche Adapters (Pattern Plugin)           │
+│  ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐  │
+│  │ ScoDoc  │ │ Parcoursup│ │  Excel   │ │  (mock)    │  │
+│  │Adapter  │ │ Adapter  │ │ Adapter  │ │  sources   │  │
+│  └─────────┘ └──────────┘ └──────────┘ └────────────┘  │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -73,7 +73,7 @@ Dashboard modulaire pour un département d'enseignement permettant de centralise
 ### Frontend
 - **Framework**: React 18 + TypeScript
 - **Build**: Vite
-- **UI Components**: shadcn/ui + Tailwind CSS
+- **UI Components**: Tailwind CSS + composants maison (Lucide, tables, cards)
 - **Charts**: Recharts
 - **Data Fetching**: TanStack Query (React Query)
 - **Routing**: React Router
@@ -164,19 +164,25 @@ Dept-Dashboard/
 - [x] Filtres avancés et sélection de périodes
 - [x] Export des graphiques (PDF, PNG, SVG)
 
-### Phase 4 - Production ✅ Partiellement terminée
-- [ ] Authentification utilisateur (JWT + CAS)
-- [ ] Authentification services externes
-- [x] Docker Compose complet
-- [x] Tests unitaires et d'intégration
-- [x] Documentation API (OpenAPI)
-- [ ] Déploiement
+### Phase 4 - Auth & Production 🚧 En cours
+- [x] Authentification utilisateur (CAS mock + JWT) + garde frontend
+- [x] Gestion utilisateurs/permissions multi-départements + routes admin/users
+- [x] Upload fichiers + stockage par département (frontend + backend)
+- [x] Docker Compose complet + migrations Alembic initiales
+- [x] Documentation API (OpenAPI) et tests backend
+- [ ] Connexion ScoDoc en environnement réel (tests avec vraies données/Redis)
+- [ ] Déploiement prod (nginx/https, hardening, monitoring)
 
 ---
 
 ## 📝 Journal des modifications
 
-### 12 décembre 2025
+### 14 décembre 2024
+- Routage API scindé par département (`/api/{dept}/...`) et contexte département côté frontend
+- Authentification CAS (mock) + JWT, pages Login/PendingValidation, garde de route React
+- Gestion utilisateurs/permissions multi-départements (routes admin/users + UI) et seeds de rôles
+- Admin budget/recrutement avec CRUD complet, imports CSV/Excel et pages dédiées
+- Migrations Alembic initiales (users/permissions, budget, recrutement) + fallback SQLite
 - Création du projet et du plan initial
 - Définition de l'architecture modulaire
 - Choix du stack technique (FastAPI + React)
@@ -224,7 +230,7 @@ Dept-Dashboard/
   - Connexion API ScoDoc : `/api/tokens`, `/api/departement/{dept}/...`, `/api/formsemestre/{id}/...`
   - Récupération données réelles : étudiants, semestres, résultats/moyennes
   - Transformation des données ScoDoc vers modèle `ScolariteIndicators`
-  - Endpoint `/api/scolarite/health` pour vérifier l'état de la connexion
+  - Endpoint `/api/{dept}/scolarite/health` pour vérifier l'état de la connexion
   - Support fallback vers `MockScoDocAdapter` si non configuré
 
 ---
@@ -340,5 +346,4 @@ async def refresh_recrutement_cache():
 
 - [ScoDoc API Documentation](https://scodoc.org/ScoDoc9API/)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
-- [shadcn/ui Components](https://ui.shadcn.com/)
 - [Recharts Documentation](https://recharts.org/)

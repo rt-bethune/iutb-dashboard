@@ -29,19 +29,42 @@
 
 ## 🚀 Démarrage rapide
 
+### Mode développement (API + Front séparés)
+
 ```bash
 # Cloner le projet
-git clone https://github.com/votre-repo/dept-dashboard.git && cd dept-dashboard
+git clone https://github.com/votre-repo/dept-dashboard.git
+cd Dept-Dashboard
 
-# Lancer avec Docker
-docker-compose up --build
+# Backend
+python -m venv backend/venv
+source backend/venv/bin/activate
+pip install -r backend/requirements.txt
+docker compose up -d redis  # cache local
+cd backend
+alembic upgrade head        # si DATABASE_URL est défini (PostgreSQL)
+python -m app.seeds --force # données de démo (optionnel)
+uvicorn app.main:app --app-dir backend --reload --port 8000
+
+# Frontend (nouveau terminal)
+cd frontend
+npm install
+npm run dev -- --host --port 5173
 ```
 
-| Service | URL |
-|---------|-----|
-| 🖥️ Frontend | http://localhost:5173 |
-| ⚡ API | http://localhost:8000 |
-| 📚 Documentation | http://localhost:8000/docs |
+### Mode Docker (stack complète)
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+| Service | Dev local | Docker |
+|---------|-----------|--------|
+| 🖥️ Frontend | http://localhost:5173 | http://localhost:3000 |
+| ⚡ API | http://localhost:8000 | http://localhost:8000 |
+| 📚 Documentation | http://localhost:8000/docs | http://localhost:8000/docs |
+
+> Les routes API sont scindées par département : `/api/{department}/...` (ex : `/api/RT/scolarite/indicators`).
 
 ## 🛠️ Stack technique
 
@@ -78,12 +101,31 @@ Frontend (React/Vite/TS) → FastAPI Backend → Adapters → Sources de donnée
 
 ```bash
 cp .env.prod.example .env
+# En dev, conserver DEBUG=true et CAS_USE_MOCK=true pour éviter le SSO réel
 ```
 
 ```env
-SECRET_KEY=votre-clé-secrète
-CAS_USE_MOCK=true              # Mode développement
-DATABASE_URL=sqlite:///./data/dashboard.db
+DEBUG=true
+SECRET_KEY=change-me
+CAS_USE_MOCK=true
+CAS_SERVER_URL=https://sso.univ-artois.fr/cas
+CAS_SERVICE_URL=http://localhost:8000/api/auth/cas/callback
+FRONTEND_URL=http://localhost:5173
+REDIS_URL=redis://localhost:6379
+DATABASE_URL=                 # vide => SQLite backend/app/data/dashboard.db
+SCODOC_BASE_URL=              # optionnel : API réelle
+SCODOC_USERNAME=
+SCODOC_PASSWORD=
+SCODOC_DEPARTMENT=RT
+```
+
+La base SQLite est créée automatiquement si `DATABASE_URL` est vide. Activez PostgreSQL en renseignant `DATABASE_URL` puis en exécutant `alembic upgrade head`.
+
+## 🧪 Tests
+
+```bash
+cd backend
+pytest
 ```
 
 ## 📖 Documentation

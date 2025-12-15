@@ -4,7 +4,7 @@ Ce fichier fournit le contexte et les conventions pour les agents IA travaillant
 
 ## 📋 Vue d'ensemble du projet
 
-**Dept-Dashboard** est un dashboard modulaire pour un département d'enseignement universitaire. Il centralise et visualise les données de plusieurs sources (ScoDoc, Apogée, Parcoursup, fichiers Excel) avec des indicateurs sur :
+**Dept-Dashboard** est un dashboard modulaire pour un département d'enseignement universitaire. Il centralise et visualise les données de plusieurs sources (ScoDoc, Parcoursup, fichiers Excel — Apogée envisagé) avec des indicateurs sur :
 - **Scolarité** : effectifs, notes, taux de réussite
 - **Recrutement** : candidatures Parcoursup, admissions
 - **Budget** : dépenses, allocations par catégorie
@@ -47,7 +47,11 @@ Dept-Dashboard/
 │   │   │       ├── budget.py
 │   │   │       ├── edt.py
 │   │   │       ├── upload.py
-│   │   │       └── admin.py
+│   │   │       ├── budget_admin.py
+│   │   │       ├── recrutement_admin.py
+│   │   │       ├── admin.py
+│   │   │       ├── auth.py
+│   │   │       └── users.py
 │   │   ├── adapters/            # Pattern adapter pour sources de données
 │   │   │   ├── base.py          # Classe abstraite BaseAdapter
 │   │   │   ├── scodoc.py        # API ScoDoc
@@ -75,14 +79,22 @@ Dept-Dashboard/
 │   │   │   ├── Layout.tsx
 │   │   │   ├── ChartContainer.tsx
 │   │   │   ├── FilterBar.tsx
-│   │   │   └── ExportButton.tsx
+│   │   │   ├── ExportButton.tsx
+│   │   │   ├── PermissionGate.tsx
+│   │   │   └── FileUpload.tsx
 │   │   ├── pages/               # Pages du dashboard
 │   │   │   ├── Dashboard.tsx
 │   │   │   ├── Scolarite.tsx
 │   │   │   ├── Recrutement.tsx
 │   │   │   ├── Budget.tsx
 │   │   │   ├── EDT.tsx
-│   │   │   └── Admin.tsx
+│   │   │   ├── Upload.tsx
+│   │   │   ├── Admin.tsx
+│   │   │   ├── AdminBudget.tsx
+│   │   │   ├── AdminRecrutement.tsx
+│   │   │   ├── UsersManagement.tsx
+│   │   │   ├── Login.tsx
+│   │   │   └── PendingValidation.tsx
 │   │   ├── services/
 │   │   │   └── api.ts           # Client API (fetch wrapper)
 │   │   ├── hooks/               # Custom React hooks
@@ -116,17 +128,22 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.adapters.base import BaseAdapter
+from app.api.deps import DepartmentDep, require_view_scolarite
+from app.models.db_models import UserDB
 
 # Modèles Pydantic : préfixer avec le domaine
 class ScolariteIndicators(BaseModel):
     total_etudiants: int
     taux_reussite: float
 
-# Routes : utiliser des routers par domaine
-router = APIRouter(prefix="/api/scolarite", tags=["Scolarité"])
+# Routes : router par domaine, préfixé dans app.main avec /api/{department}/...
+router = APIRouter(tags=["Scolarité"])
 
 @router.get("/indicators")
-async def get_indicators() -> ScolariteIndicators:
+async def get_indicators(
+    department: DepartmentDep,
+    user: UserDB = Depends(require_view_scolarite),
+) -> ScolariteIndicators:
     ...
 
 # Adapters : hériter de BaseAdapter
@@ -146,9 +163,11 @@ interface ScolariteData {
 
 // Composants : functional components avec hooks
 export function ScolaritePage() {
+  const { department } = useDepartment();
+
   const { data, isLoading } = useQuery({
-    queryKey: ['scolarite'],
-    queryFn: () => api.scolarite.getIndicators()
+    queryKey: ['scolarite', department],
+    queryFn: () => scolariteApi.getIndicators(department)
   });
   
   if (isLoading) return <Loading />;
@@ -157,7 +176,7 @@ export function ScolaritePage() {
 
 // API calls : centralisés dans services/api.ts
 export const scolariteApi = {
-  getIndicators: () => fetchApi<ScolariteData>('/api/scolarite/indicators'),
+  getIndicators: (department: string) => fetchApi<ScolariteData>(`/api/${department}/scolarite/indicators`),
 };
 ```
 
@@ -202,19 +221,21 @@ Pour ajouter une nouvelle source de données :
 from app.services.cache import cache_service, CacheKeys
 
 # Lecture avec fallback
-data = await cache_service.get(CacheKeys.SCOLARITE_INDICATORS)
+data = await cache_service.get(CacheKeys.scolarite_indicators(annee, department))
 if not data:
-    data = await adapter.fetch_data()
-    await cache_service.set(CacheKeys.SCOLARITE_INDICATORS, data, ttl=3600)
+    data = await adapter.get_data(annee=annee)
+    await cache_service.set(CacheKeys.scolarite_indicators(annee, department), data, ttl=3600)
 ```
 
 ### 3. Pattern API Frontend
 
 ```typescript
 // Toujours utiliser TanStack Query pour le data fetching
+const { department } = useDepartment();
+
 const { data, isLoading, error, refetch } = useQuery({
-  queryKey: ['domain', 'resource', params],
-  queryFn: () => api.domain.getResource(params),
+  queryKey: ['domain', department, 'resource', params],
+  queryFn: () => api.domain.getResource(department, params),
   staleTime: 5 * 60 * 1000, // 5 minutes
 });
 ```
@@ -294,6 +315,8 @@ pytest tests/test_routes.py  # Tests routes uniquement
 pytest --cov=app             # Avec couverture
 ```
 
+Les routes métiers exigent un JWT et des permissions. En tests d'intégration, générez un token via `/api/auth/dev/login?username=admin` (CAS mock) ou override les dépendances `require_*` si besoin.
+
 ### Structure des tests
 
 ```python
@@ -303,7 +326,11 @@ from httpx import AsyncClient
 
 @pytest.mark.asyncio
 async def test_get_scolarite_indicators(client: AsyncClient):
-    response = await client.get("/api/scolarite/indicators")
+    token = "DEV_TOKEN"  # récupéré via /api/auth/dev/login?username=admin
+    response = await client.get(
+        "/api/RT/scolarite/indicators",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert response.status_code == 200
     data = response.json()
     assert "total_etudiants" in data
@@ -384,6 +411,8 @@ docker-compose -f docker-compose.yml up -d
 
 5. **Fichiers CSV** : Encoding UTF-8, séparateur `;` pour les fichiers français.
 
+6. **Auth & permissions** : Les routes métier attendent un header `Authorization: Bearer <token>` et vérifient les permissions du département ; override les dépendances `require_*` en test si nécessaire.
+
 ## 🔗 Ressources
 
 - [Plan de projet détaillé](plan.md)
@@ -397,15 +426,14 @@ docker-compose -f docker-compose.yml up -d
 Voir [plan.md](plan.md) pour la roadmap complète et le journal des modifications.
 
 ### Fonctionnalités implémentées
-- ✅ Backend API complet (4 domaines + admin)
-- ✅ Frontend avec graphiques Recharts
-- ✅ Cache Redis + Scheduler
-- ✅ Filtres avancés
-- ✅ Export PDF/PNG/SVG
-- ✅ Tests unitaires
-- ✅ Documentation OpenAPI
+- ✅ Routes API scindées par département + client React `DepartmentContext`
+- ✅ Auth CAS (mock) + JWT, garde frontend, pages Login/PendingValidation
+- ✅ Gestion utilisateurs/permissions multi-départements + pages Admin/Users
+- ✅ Admin budget/recrutement (CRUD + imports), upload multi-types par département
+- ✅ Dashboards frontend (Recharts, filtres, exports) et cache Redis + scheduler
+- ✅ Seeds démo, migrations Alembic initiales, tests backend et documentation OpenAPI
 
 ### À faire
-- [ ] Authentification JWT/CAS
-- [ ] Connexion réelle API ScoDoc
-- [ ] Upload fichiers via interface
+- [ ] Valider la connexion ScoDoc avec de vraies données (perf, erreurs réseau)
+- [ ] Durcir la config de production (HTTPS/nginx, variables secrètes, monitoring)
+- [ ] Ajouter alerting/suivi sur les jobs et le cache
