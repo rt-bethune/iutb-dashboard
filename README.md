@@ -27,6 +27,8 @@
 | 📅 **EDT** | Charges enseignantes, occupation des salles |
 | 🔐 **Multi-départements** | Authentification CAS, permissions granulaires |
 
+Plus de détails sur les fonctionnalités dans le [DOCUMENTATION.md](DOCUMENTATION.md).
+
 ## 🚀 Démarrage rapide
 
 ### Mode développement (API + Front séparés)
