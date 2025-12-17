@@ -24,7 +24,7 @@
 | 📊 **Scolarité** | Effectifs, taux de réussite, notes par semestre via ScoDoc |
 | 🎯 **Recrutement** | Statistiques Parcoursup, profils des candidats admis |
 | 💰 **Budget** | Suivi des dépenses, répartition par catégorie |
-| 📅 **EDT** | Charges enseignantes, occupation des salles |
+| 📅 **EDT et Maquettes** | Charges enseignantes, occupation des salles, maquettes pédagogiques |
 | 🔐 **Multi-départements** | Authentification CAS, permissions granulaires |
 
 Plus de détails sur les fonctionnalités dans le [DOCUMENTATION.md](DOCUMENTATION.md).

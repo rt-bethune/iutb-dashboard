@@ -16,7 +16,7 @@ L'accès au tableau de bord est sécurisé. En production, l'authentification se
 ![Page de Connexion](screenshots/login.png)
 
 ### 2. Tableau de Bord Principal (Dashboard)
-Une fois connecté, l'utilisateur arrive sur la vue d'ensemble. Cette page présente des indicateurs synthétiques pour chaque grand domaine : Scolarité, Recrutement, Budget et EDT.
+Une fois connecté, l'utilisateur arrive sur la vue d'ensemble. Cette page présente des indicateurs synthétiques pour chaque grand domaine : Scolarité, Recrutement, Budget et EDT/Maquettes.
 
 ![Tableau de Bord Principal](screenshots/home.png)
 
@@ -50,8 +50,8 @@ Le module **Budget** permet aux responsables de suivre l'état des finances du d
 - Visualisation de la répartition du budget (Investissement vs Fonctionnement).
 - Alertes sur les seuils de dépenses.
 
-### 6. Module Emploi du Temps (EDT)
-Le module **EDT** analyse la charge d'enseignement et l'occupation des ressources.
+### 6. Module Emploi du Temps et Maquette (EDT)
+Le module **EDT et Maquette** analyse la charge d'enseignement et l'occupation des ressources.
 
 ![Module EDT](screenshots/edt.png)
 
@@ -76,7 +76,7 @@ Pour chaque département, vous pouvez cocher les droits spécifiques :
 - **Voir / Modifier Scolarité** : Accès aux notes et jurys.
 - **Voir / Modifier Recrutement** : Accès aux dossiers Parcoursup.
 - **Voir / Modifier Budget** : Accès au suivi financier.
-- **Voir / Modifier EDT** : Accès aux emplois du temps profs/salles.
+- **Voir / Modifier EDT et Maquette** : Accès aux emplois du temps profs/salles ainsi qu'aux maquettes pédagogiques.
 - **Import / Export** : Droit d'importer des fichiers Excel ou d'exporter les statistiques.
 
 Le badge <span style="background-color: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 4px; font-size: 0.8em;">Admin</span> donne tous les droits sur le département concerné.
