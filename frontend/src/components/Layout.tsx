@@ -13,9 +13,13 @@ import {
   Building2,
   LogOut,
   User,
-  Shield
+  Shield,
+  AlertTriangle,
+  BarChart3,
+  RefreshCw
 } from 'lucide-react'
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useDepartment, DEPARTMENTS, DEPARTMENT_NAMES, type Department } from '../contexts/DepartmentContext'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -23,6 +27,8 @@ import { useAuth } from '../contexts/AuthContext'
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, permission: null },
   { path: '/scolarite', label: 'Scolarité', icon: GraduationCap, permission: 'can_view_scolarite' as const },
+  { path: '/alertes', label: 'Alertes', icon: AlertTriangle, permission: 'can_view_scolarite' as const },
+  { path: '/indicateurs', label: 'Indicateurs', icon: BarChart3, permission: 'can_view_scolarite' as const },
   { path: '/recrutement', label: 'Recrutement', icon: Users, permission: 'can_view_recrutement' as const },
   { path: '/budget', label: 'Budget', icon: Wallet, permission: 'can_view_budget' as const },
   { path: '/edt', label: 'EDT', icon: Calendar, permission: 'can_view_edt' as const },
@@ -38,8 +44,18 @@ const adminItems = [
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const { department, setDepartment, departmentName } = useDepartment()
   const { user, logout, isAdmin, checkPermission } = useAuth()
+  const queryClient = useQueryClient()
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    // Invalidate all queries to force refetch
+    await queryClient.invalidateQueries()
+    // Small delay for visual feedback
+    setTimeout(() => setIsRefreshing(false), 500)
+  }
 
   // Filter departments based on user permissions (show only departments where user has at least one permission)
   const accessibleDepartments = user?.is_superadmin 
@@ -183,6 +199,14 @@ export default function Layout() {
             </button>
             
             <div className="flex items-center gap-4 ml-auto">
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+                title="Rafraîchir les données"
+              >
+                <RefreshCw className={`w-5 h-5 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
               <span className="px-3 py-1 text-sm font-medium text-primary-700 bg-primary-50 rounded-full">
                 {department} - {departmentName}
               </span>

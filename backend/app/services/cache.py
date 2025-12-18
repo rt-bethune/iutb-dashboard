@@ -101,6 +101,32 @@ class CacheService:
             logger.error(f"Cache get_raw error for {key}: {e}")
             return None
     
+    async def get_list(self, key: str, model_class: Type[T]) -> Optional[list[T]]:
+        """
+        Get a cached list of Pydantic models.
+        
+        Args:
+            key: Cache key
+            model_class: Pydantic model class for deserialization
+            
+        Returns:
+            List of deserialized models or None if not found/error
+        """
+        if not self.is_connected:
+            return None
+        
+        try:
+            data = await self._client.get(key)
+            if data:
+                logger.debug(f"Cache HIT (list): {key}")
+                items = json.loads(data)
+                return [model_class.model_validate(item) for item in items]
+            logger.debug(f"Cache MISS (list): {key}")
+            return None
+        except Exception as e:
+            logger.error(f"Cache get_list error for {key}: {e}")
+            return None
+    
     async def set(
         self, 
         key: str, 
@@ -152,6 +178,38 @@ class CacheService:
             return True
         except Exception as e:
             logger.error(f"Cache set_raw error for {key}: {e}")
+            return False
+    
+    async def set_list(
+        self, 
+        key: str, 
+        value: list[BaseModel], 
+        ttl: Optional[int] = None
+    ) -> bool:
+        """
+        Cache a list of Pydantic models.
+        
+        Args:
+            key: Cache key
+            value: List of Pydantic models to cache
+            ttl: Time-to-live in seconds (None = no expiry)
+            
+        Returns:
+            True if successful
+        """
+        if not self.is_connected:
+            return False
+        
+        try:
+            data = json.dumps([item.model_dump() for item in value])
+            if ttl:
+                await self._client.setex(key, ttl, data)
+            else:
+                await self._client.set(key, data)
+            logger.debug(f"Cache SET (list): {key} (TTL: {ttl}s)")
+            return True
+        except Exception as e:
+            logger.error(f"Cache set_list error for {key}: {e}")
             return False
     
     async def delete(self, key: str) -> bool:
@@ -217,6 +275,60 @@ class CacheKeys:
     RECRUTEMENT = "recrutement"
     BUDGET = "budget"
     EDT = "edt"
+    ALERTES = "alertes"
+    INDICATEURS = "indicateurs"
+    
+    # TTL values (seconds)
+    TTL_SHORT = 300      # 5 minutes
+    TTL_MEDIUM = 1800    # 30 minutes
+    TTL_LONG = 3600      # 1 hour
+    TTL_STUDENT = 600    # 10 minutes for individual student data
+    
+    @staticmethod
+    def alertes_list(department: str, semestre: Optional[str] = None) -> str:
+        sem = semestre or "all"
+        return f"alertes:{department}:list:{sem}"
+    
+    @staticmethod
+    def alertes_stats(department: str, semestre: Optional[str] = None) -> str:
+        sem = semestre or "all"
+        return f"alertes:{department}:stats:{sem}"
+    
+    @staticmethod
+    def fiche_etudiant(department: str, etudiant_id: str) -> str:
+        return f"alertes:{department}:fiche:{etudiant_id}"
+    
+    @staticmethod
+    def indicateurs_tableau_bord(department: str, annee: Optional[str] = None, semestre: Optional[str] = None) -> str:
+        a = annee or "current"
+        s = semestre or "all"
+        return f"indicateurs:{department}:tableau_bord:{a}:{s}"
+    
+    @staticmethod
+    def indicateurs_statistiques(department: str, semestre: Optional[str] = None) -> str:
+        sem = semestre or "all"
+        return f"indicateurs:{department}:statistiques:{sem}"
+    
+    @staticmethod
+    def indicateurs_taux_validation(department: str, semestre: Optional[str] = None) -> str:
+        sem = semestre or "all"
+        return f"indicateurs:{department}:taux_validation:{sem}"
+    
+    @staticmethod
+    def indicateurs_mentions(department: str, semestre: Optional[str] = None) -> str:
+        sem = semestre or "all"
+        return f"indicateurs:{department}:mentions:{sem}"
+    
+    @staticmethod
+    def indicateurs_modules(department: str, semestre: Optional[str] = None, tri: Optional[str] = None) -> str:
+        sem = semestre or "all"
+        sort_by = tri or "taux_echec"
+        return f"indicateurs:{department}:modules:{sem}:{sort_by}"
+    
+    @staticmethod
+    def indicateurs_absenteisme(department: str, semestre: Optional[str] = None) -> str:
+        sem = semestre or "all"
+        return f"indicateurs:{department}:absenteisme:{sem}"
     
     @staticmethod
     def scolarite_indicators(annee: Optional[str] = None, department: Optional[str] = None) -> str:

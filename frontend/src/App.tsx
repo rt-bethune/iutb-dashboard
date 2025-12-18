@@ -12,6 +12,10 @@ import Upload from './pages/Upload'
 import Login from './pages/Login'
 import PendingValidation from './pages/PendingValidation'
 import UsersManagement from './pages/UsersManagement'
+import Alertes from './pages/Alertes'
+import Indicateurs from './pages/Indicateurs'
+import FicheEtudiant from './pages/FicheEtudiant'
+import EtudiantsListe from './pages/EtudiantsListe'
 import { useAuth } from './contexts/AuthContext'
 import { Loader2 } from 'lucide-react'
 
@@ -53,6 +57,13 @@ function App() {
       }>
         <Route index element={<Dashboard />} />
         <Route path="scolarite" element={<Scolarite />} />
+        <Route path="alertes" element={<Alertes />} />
+        <Route path="alertes/etudiant/:etudiantId" element={<FicheEtudiant />} />
+        <Route path="alertes/etudiants-en-difficulte" element={<EtudiantsListe />} />
+        <Route path="alertes/etudiants-absents" element={<EtudiantsListe />} />
+        <Route path="alertes/etudiants-risque-decrochage" element={<EtudiantsListe />} />
+        <Route path="alertes/felicitations" element={<EtudiantsListe />} />
+        <Route path="indicateurs" element={<Indicateurs />} />
         <Route path="recrutement" element={<Recrutement />} />
         <Route path="budget" element={<Budget />} />
         <Route path="edt" element={<EDT />} />

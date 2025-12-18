@@ -232,6 +232,140 @@ async def clear_cache(
         return {"message": "Tout le cache a été vidé", "keys_deleted": deleted}
 
 
+@router.post(
+    "/cache/warmup",
+    summary="Pré-charger le cache",
+)
+async def warmup_cache(
+    department: Optional[str] = Query(None, description="Département spécifique (RT, GEII, etc.) ou tous si non spécifié"),
+    db: Session = Depends(get_db),
+):
+    """
+    Pré-charge le cache avec les données de tous les dashboards.
+    Appelle directement les services pour chaque département et met en cache les résultats.
+    """
+    import logging
+    from app.api.deps import VALID_DEPARTMENTS, get_scodoc_adapter_for_department
+    from app.services.cache import CacheKeys
+    from app.services.indicateurs_service import IndicateursService
+    from app.services.alertes_service import AlertesService
+    # Import route helper functions for proper indicator building
+    from app.api.routes.budget import get_budget_from_db
+    from app.api.routes.recrutement import get_recrutement_from_db
+    
+    logger = logging.getLogger(__name__)
+    
+    departments = [department.upper()] if department else VALID_DEPARTMENTS
+    results = {"departments": {}, "total_cached": 0, "errors": []}
+    
+    for dept in departments:
+        dept_results = {"cached": 0, "failed": []}
+        adapter = None
+        
+        try:
+            # Get adapter for this department
+            adapter = get_scodoc_adapter_for_department(dept)
+            
+            # 1. Scolarité indicators via adapter.get_data()
+            try:
+                data = await adapter.get_data()
+                if data:
+                    await cache.set(CacheKeys.scolarite_indicators(None, dept), data, ttl=CacheKeys.TTL_LONG)
+                    dept_results["cached"] += 1
+                    logger.info(f"Cached scolarite indicators for {dept}")
+            except Exception as e:
+                dept_results["failed"].append({"endpoint": "scolarite/indicators", "error": str(e)})
+                logger.error(f"Failed to cache scolarite for {dept}: {e}")
+            
+            # 2. Recrutement indicators (using route helper)
+            try:
+                indicators = get_recrutement_from_db(db, dept)
+                if indicators:
+                    await cache.set(CacheKeys.recrutement_indicators(dept), indicators, ttl=CacheKeys.TTL_LONG)
+                    dept_results["cached"] += 1
+                    logger.info(f"Cached recrutement indicators for {dept}")
+            except Exception as e:
+                dept_results["failed"].append({"endpoint": "recrutement/indicators", "error": str(e)})
+                logger.error(f"Failed to cache recrutement for {dept}: {e}")
+            
+            # 3. Budget indicators (using route helper)
+            try:
+                indicators = get_budget_from_db(db, dept)
+                if indicators:
+                    await cache.set(CacheKeys.budget_indicators(dept), indicators, ttl=CacheKeys.TTL_LONG)
+                    dept_results["cached"] += 1
+                    logger.info(f"Cached budget indicators for {dept}")
+            except Exception as e:
+                dept_results["failed"].append({"endpoint": "budget/indicators", "error": str(e)})
+                logger.error(f"Failed to cache budget for {dept}: {e}")
+            
+            # 4. Indicateurs service (tableau-bord, statistiques, etc.)
+            try:
+                service = IndicateursService(adapter)
+                
+                # Tableau de bord
+                tableau = await service.get_tableau_bord()
+                if tableau:
+                    await cache.set(CacheKeys.indicateurs_tableau_bord(dept), tableau, ttl=CacheKeys.TTL_MEDIUM)
+                    dept_results["cached"] += 1
+                
+                # Statistiques
+                stats = await service.get_statistiques_cohorte()
+                if stats:
+                    await cache.set(CacheKeys.indicateurs_statistiques(dept), stats, ttl=CacheKeys.TTL_MEDIUM)
+                    dept_results["cached"] += 1
+                
+                # Taux validation
+                taux = await service.get_taux_validation()
+                if taux:
+                    await cache.set(CacheKeys.indicateurs_taux_validation(dept), taux, ttl=CacheKeys.TTL_MEDIUM)
+                    dept_results["cached"] += 1
+                
+                # Mentions
+                mentions = await service.get_mentions()
+                if mentions:
+                    await cache.set(CacheKeys.indicateurs_mentions(dept), mentions, ttl=CacheKeys.TTL_MEDIUM)
+                    dept_results["cached"] += 1
+                
+                # Modules
+                modules = await service.get_modules_analyse()
+                if modules:
+                    await cache.set_list(CacheKeys.indicateurs_modules(dept), modules, ttl=CacheKeys.TTL_MEDIUM)
+                    dept_results["cached"] += 1
+                
+                logger.info(f"Cached indicateurs for {dept}")
+            except Exception as e:
+                dept_results["failed"].append({"endpoint": "indicateurs/*", "error": str(e)})
+                logger.error(f"Failed to cache indicateurs for {dept}: {e}")
+            
+            # 5. Alertes statistiques
+            try:
+                alertes_service = AlertesService(adapter)
+                stats = await alertes_service.get_statistiques_alertes()
+                if stats:
+                    await cache.set_raw(CacheKeys.alertes_stats(dept), stats, ttl=CacheKeys.TTL_SHORT)
+                    dept_results["cached"] += 1
+                    logger.info(f"Cached alertes stats for {dept}")
+            except Exception as e:
+                dept_results["failed"].append({"endpoint": "alertes/statistiques", "error": str(e)})
+                logger.error(f"Failed to cache alertes for {dept}: {e}")
+        
+        finally:
+            # Close adapter
+            if adapter and hasattr(adapter, 'close'):
+                await adapter.close()
+        
+        results["departments"][dept] = dept_results
+        results["total_cached"] += dept_results["cached"]
+        if dept_results["failed"]:
+            results["errors"].extend([f"{dept}: {f}" for f in dept_results["failed"]])
+    
+    return {
+        "message": f"Cache pré-chargé pour {len(departments)} département(s)",
+        "details": results
+    }
+
+
 # ============== Jobs ==============
 
 @router.get(

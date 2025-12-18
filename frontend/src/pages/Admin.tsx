@@ -4,7 +4,7 @@ import {
   Settings, Database, Trash2, Play, 
   CheckCircle, AlertCircle, Clock, 
   Server, HardDrive, Activity,
-  Loader2, X
+  Loader2, X, Download
 } from 'lucide-react'
 import StatCard from '@/components/StatCard'
 import { adminApi } from '@/services/api'
@@ -109,6 +109,18 @@ export default function Admin() {
     },
   })
 
+  const warmupCacheMutation = useMutation({
+    mutationFn: adminApi.warmupCache,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'cache'] })
+      const count = data.details?.total_cached || 0
+      setToast({ message: `Cache pré-chargé: ${count} endpoints mis en cache`, type: 'success' })
+    },
+    onError: () => {
+      setToast({ message: 'Erreur lors du pré-chargement du cache', type: 'error' })
+    },
+  })
+
   const runJobMutation = useMutation({
     mutationFn: async (jobId: string) => {
       setRunningJobId(jobId)
@@ -191,6 +203,8 @@ export default function Admin() {
           stats={cacheStats} 
           onClear={(domain) => clearCacheMutation.mutate(domain)}
           isClearing={clearCacheMutation.isPending}
+          onWarmup={(dept) => warmupCacheMutation.mutate(dept)}
+          isWarming={warmupCacheMutation.isPending}
         />
       )}
 
@@ -371,13 +385,18 @@ function SourcesTab({ sources }: { sources: DataSource[] }) {
 function CacheTab({ 
   stats, 
   onClear, 
-  isClearing 
+  isClearing,
+  onWarmup,
+  isWarming,
 }: { 
   stats?: CacheStats
   onClear: (domain?: string) => void
   isClearing: boolean
+  onWarmup: (department?: string) => void
+  isWarming: boolean
 }) {
   const domains = ['scolarite', 'recrutement', 'budget', 'edt']
+  const departments = ['RT', 'GEII', 'GCCD', 'GMP', 'QLIO', 'CHIMIE']
 
   return (
     <div className="space-y-6">
@@ -407,6 +426,40 @@ function CacheTab({
           icon={<HardDrive className="w-6 h-6" />}
           color="blue"
         />
+      </div>
+
+      {/* Warmup cache */}
+      <div className="card">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Pré-charger le cache</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Pré-chargez les données de tous les dashboards pour améliorer les performances. 
+          Cette opération peut prendre quelques minutes.
+        </p>
+        
+        <div className="flex flex-wrap gap-3">
+          {departments.map(dept => (
+            <button
+              key={dept}
+              onClick={() => onWarmup(dept)}
+              disabled={isWarming}
+              className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors"
+            >
+              {isWarming ? <Loader2 className="w-4 h-4 animate-spin" /> : dept}
+            </button>
+          ))}
+          <button
+            onClick={() => onWarmup()}
+            disabled={isWarming}
+            className="px-4 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg transition-colors flex items-center gap-2"
+          >
+            {isWarming ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            Tout pré-charger
+          </button>
+        </div>
       </div>
 
       {/* Clear cache */}

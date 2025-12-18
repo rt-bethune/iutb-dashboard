@@ -1,13 +1,16 @@
 import { ReactNode, useRef } from 'react'
+import { Loader2 } from 'lucide-react'
 import ExportButton from './ExportButton'
 
-interface ChartContainerProps {
+export interface ChartContainerProps {
   title: string
   subtitle?: string
   children: ReactNode
   actions?: ReactNode
   exportFilename?: string
   showExport?: boolean
+  loading?: boolean
+  height?: string
 }
 
 export default function ChartContainer({ 
@@ -16,7 +19,9 @@ export default function ChartContainer({
   children, 
   actions,
   exportFilename,
-  showExport = true
+  showExport = true,
+  loading = false,
+  height = 'h-72',
 }: ChartContainerProps) {
   const chartRef = useRef<HTMLDivElement>(null)
 
@@ -40,8 +45,14 @@ export default function ChartContainer({
           )}
         </div>
       </div>
-      <div className="h-72" ref={chartRef}>
-        {children}
+      <div className={height} ref={chartRef}>
+        {loading ? (
+          <div className="h-full flex items-center justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          </div>
+        ) : (
+          children
+        )}
       </div>
     </div>
   )

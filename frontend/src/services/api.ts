@@ -48,6 +48,64 @@ export const scolariteApi = {
     api.get(withDept('/scolarite/reussite', department)).then(res => res.data),
 }
 
+// Alertes étudiants
+export const alertesApi = {
+  getAlertes: (department: string, params?: { niveau?: string; type_alerte?: string; semestre?: string; limit?: number }) =>
+    api.get(withDept('/alertes/', department), { params }).then(res => res.data),
+  getStatistiques: (department: string, semestre?: string) =>
+    api.get(withDept('/alertes/statistiques', department), { params: { semestre } }).then(res => res.data),
+  getConfig: (department: string) =>
+    api.get(withDept('/alertes/config', department)).then(res => res.data),
+  updateConfig: (department: string, config: any) =>
+    api.put(withDept('/alertes/config', department), config).then(res => res.data),
+  getFicheEtudiant: (department: string, etudiantId: string) =>
+    api.get(withDept(`/alertes/etudiant/${etudiantId}`, department)).then(res => res.data),
+  getAbsencesEtudiant: (department: string, etudiantId: string, semestre?: string) =>
+    api.get(withDept(`/alertes/etudiant/${etudiantId}/absences`, department), { params: { semestre } }).then(res => res.data),
+  getProgressionEtudiant: (department: string, etudiantId: string) =>
+    api.get(withDept(`/alertes/etudiant/${etudiantId}/progression`, department)).then(res => res.data),
+  getRisqueEtudiant: (department: string, etudiantId: string) =>
+    api.get(withDept(`/alertes/etudiant/${etudiantId}/risque`, department)).then(res => res.data),
+  getEtudiantsEnDifficulte: (department: string, params?: { semestre?: string; seuil_moyenne?: number }) =>
+    api.get(withDept('/alertes/etudiants-en-difficulte', department), { params }).then(res => res.data),
+  getEtudiantsAbsents: (department: string, params?: { semestre?: string; seuil_absences?: number }) =>
+    api.get(withDept('/alertes/etudiants-absents', department), { params }).then(res => res.data),
+  getEtudiantsRisqueDecrochage: (department: string, params?: { semestre?: string; seuil_score?: number }) =>
+    api.get(withDept('/alertes/etudiants-risque-decrochage', department), { params }).then(res => res.data),
+  getFelicitations: (department: string, params?: { semestre?: string; top_percent?: number }) =>
+    api.get(withDept('/alertes/felicitations', department), { params }).then(res => res.data),
+}
+
+// Indicateurs cohorte
+export const indicateursApi = {
+  getTableauBord: (department: string, params?: { annee?: string; semestre?: string }) =>
+    api.get(withDept('/indicateurs/tableau-bord', department), { params }).then(res => res.data),
+  getStatistiques: (department: string, params?: { semestre?: string; groupe?: string }) =>
+    api.get(withDept('/indicateurs/statistiques', department), { params }).then(res => res.data),
+  getTauxValidation: (department: string, semestre?: string) =>
+    api.get(withDept('/indicateurs/taux-validation', department), { params: { semestre } }).then(res => res.data),
+  getMentions: (department: string, semestre?: string) =>
+    api.get(withDept('/indicateurs/mentions', department), { params: { semestre } }).then(res => res.data),
+  getModules: (department: string, params?: { semestre?: string; tri?: string }) =>
+    api.get(withDept('/indicateurs/modules', department), { params }).then(res => res.data),
+  getModule: (department: string, codeModule: string, semestre?: string) =>
+    api.get(withDept(`/indicateurs/modules/${codeModule}`, department), { params: { semestre } }).then(res => res.data),
+  getAbsenteisme: (department: string, semestre?: string) =>
+    api.get(withDept('/indicateurs/absenteisme', department), { params: { semestre } }).then(res => res.data),
+  getTauxPassage: (department: string, annee?: string) =>
+    api.get(withDept('/indicateurs/taux-passage', department), { params: { annee } }).then(res => res.data),
+  getComparaisonInterannuelle: (department: string, nbAnnees?: number) =>
+    api.get(withDept('/indicateurs/comparaison-interannuelle', department), { params: { nb_annees: nbAnnees } }).then(res => res.data),
+  getAnalyseTypeBac: (department: string, semestre?: string) =>
+    api.get(withDept('/indicateurs/analyse-type-bac', department), { params: { semestre } }).then(res => res.data),
+  getAnalyseBoursiers: (department: string, semestre?: string) =>
+    api.get(withDept('/indicateurs/analyse-boursiers', department), { params: { semestre } }).then(res => res.data),
+  getPredictifs: (department: string, semestre?: string) =>
+    api.get(withDept('/indicateurs/predictifs', department), { params: { semestre } }).then(res => res.data),
+  getRapportSemestre: (department: string, annee: string, semestre: string) =>
+    api.get(withDept('/indicateurs/rapport-semestre', department), { params: { annee, semestre } }).then(res => res.data),
+}
+
 // Recrutement
 export const recrutementApi = {
   getIndicators: (department: string, annee?: number) => 
@@ -153,6 +211,8 @@ export const adminApi = {
   getCacheStats: () => api.get('/admin/cache/stats').then(res => res.data),
   clearCache: (domain?: string) => 
     api.post('/admin/cache/clear', null, { params: { domain } }).then(res => res.data),
+  warmupCache: (department?: string) =>
+    api.post('/admin/cache/warmup', null, { params: { department } }).then(res => res.data),
   
   // Jobs
   getJobs: () => api.get('/admin/jobs').then(res => res.data),

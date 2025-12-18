@@ -8,6 +8,7 @@ from fastapi.openapi.utils import get_openapi
 from app.config import get_settings
 from app.api.routes import scolarite, recrutement, budget, edt, upload, admin
 from app.api.routes import budget_admin, recrutement_admin, auth, users
+from app.api.routes import alertes, indicateurs
 from app.services import cache, scheduler
 from app.database import init_db
 
@@ -77,6 +78,14 @@ Utilisez le paramètre `?refresh=true` pour forcer un rafraîchissement du cache
             {
                 "name": "Budget",
                 "description": "Suivi budgétaire : allocations, dépenses, taux d'exécution",
+            },
+            {
+                "name": "Alertes étudiants",
+                "description": "Alertes, suivi individuel et détection précoce des difficultés",
+            },
+            {
+                "name": "Indicateurs cohorte",
+                "description": "Statistiques avancées de cohorte, analyses par type de bac, comparaisons interannuelles",
             },
             {
                 "name": "EDT",
@@ -159,6 +168,20 @@ app.include_router(
     upload.router,
     prefix=f"{settings.api_prefix}/{{department}}/upload",
     tags=["Upload"],
+)
+
+# Alertes et suivi individuel
+app.include_router(
+    alertes.router,
+    prefix=f"{settings.api_prefix}/{{department}}",
+    tags=["Alertes étudiants"],
+)
+
+# Indicateurs de cohorte et statistiques avancées
+app.include_router(
+    indicateurs.router,
+    prefix=f"{settings.api_prefix}/{{department}}",
+    tags=["Indicateurs cohorte"],
 )
 
 # Department-scoped admin routes for budget and recrutement
