@@ -300,10 +300,12 @@ class IndicateursService:
             
             # Collect grades per module
             module_grades = {}  # code -> list of grades
-            modules_info = {}  # code -> {nom}
+            modules_info = {}  # code -> {nom, semestre, formation}
             
             for sem in semestres:
                 sem_id = sem.get("formsemestre_id")
+                sem_name = f"S{sem.get('semestre_id', '?')}"
+                sem_formation = sem.get("titre", sem.get("titre_formation", ""))
                 resultats = await self.adapter.get_formsemestre_resultats(sem_id)
                 programme = await self.adapter.get_formsemestre_programme(sem_id)
                 
@@ -315,7 +317,9 @@ class IndicateursService:
                             code = mod.get("code", "")
                             if code:
                                 modules_info[code] = {
-                                    "nom": mod.get("titre", mod.get("abbrev", "Module"))[:50]
+                                    "nom": mod.get("titre", mod.get("abbrev", "Module"))[:50],
+                                    "semestre": sem_name,
+                                    "formation": sem_formation,
                                 }
                 
                 if not resultats:
@@ -343,6 +347,15 @@ class IndicateursService:
                                     
                                     if not code:
                                         code = f"R{module_id}"
+                                    
+                                    # Store semestre and formation info for this module
+                                    if code not in modules_info:
+                                        modules_info[code] = {"nom": "Module", "semestre": sem_name, "formation": sem_formation}
+                                    else:
+                                        if "semestre" not in modules_info[code]:
+                                            modules_info[code]["semestre"] = sem_name
+                                        if "formation" not in modules_info[code]:
+                                            modules_info[code]["formation"] = sem_formation
                                     
                                     note = float(str(value).replace(",", "."))
                                     
@@ -391,7 +404,8 @@ class IndicateursService:
                 
                 modules.append(ModuleAnalyse(
                     code=code,
-                    semestre=semestre,
+                    semestre=info.get("semestre", ""),
+                    formation=info.get("formation", ""),
                     nom=info.get("nom", "Module"),
                     moyenne=round(moyenne, 2),
                     ecart_type=round(ecart_type, 2),

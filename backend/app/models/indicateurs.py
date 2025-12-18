@@ -110,6 +110,7 @@ class ModuleAnalyse(BaseModel):
     code: str
     nom: str
     semestre: Optional[str] = None
+    formation: Optional[str] = None
     annee: Optional[str] = None
     
     # Stats de base

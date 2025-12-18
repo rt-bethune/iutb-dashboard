@@ -76,6 +76,7 @@ interface ModuleAnalyse {
   alerte: boolean
   alerte_message?: string
   semestre?: string
+  formation?: string
 }
 
 interface ComparaisonInterannuelle {
@@ -197,6 +198,7 @@ export default function IndicateursPage() {
   const modulesColumns = [
     { key: 'code', header: 'Code' },
     { key: 'nom', header: 'Module' },
+    { key: 'formation', header: 'Formation' },
     { key: 'semestre', header: 'Semestre' },
     {
       key: 'moyenne',
