@@ -16,6 +16,7 @@ import Alertes from './pages/Alertes'
 import Indicateurs from './pages/Indicateurs'
 import FicheEtudiant from './pages/FicheEtudiant'
 import EtudiantsListe from './pages/EtudiantsListe'
+import AnalyseModules from './pages/AnalyseModules'
 import { useAuth } from './contexts/AuthContext'
 import { Loader2 } from 'lucide-react'
 
@@ -64,6 +65,7 @@ function App() {
         <Route path="alertes/etudiants-risque-decrochage" element={<EtudiantsListe />} />
         <Route path="alertes/felicitations" element={<EtudiantsListe />} />
         <Route path="indicateurs" element={<Indicateurs />} />
+        <Route path="analyse-modules" element={<AnalyseModules />} />
         <Route path="recrutement" element={<Recrutement />} />
         <Route path="budget" element={<Budget />} />
         <Route path="edt" element={<EDT />} />

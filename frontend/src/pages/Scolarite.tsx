@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { GraduationCap, TrendingUp, AlertCircle } from 'lucide-react'
 import { 
@@ -7,53 +7,25 @@ import {
 } from 'recharts'
 import StatCard from '@/components/StatCard'
 import ChartContainer from '@/components/ChartContainer'
-import DataTable from '@/components/DataTable'
 import ProgressBar from '@/components/ProgressBar'
 import FilterBar, { FilterConfig, FilterValues, YearSelector, PeriodSelector } from '@/components/FilterBar'
 import PermissionGate from '@/components/PermissionGate'
 import { scolariteApi } from '@/services/api'
 import { useDepartment } from '../contexts/DepartmentContext'
-import type { ModuleStats } from '@/types'
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
 
-// Filter configuration
-const filterConfigs: FilterConfig[] = [
-  {
-    key: 'formation',
-    label: 'Formation',
-    type: 'select',
-    options: [
-      { value: '', label: 'Toutes' },
-      { value: 'BUT', label: 'BUT' },
-      { value: 'LP', label: 'Licence Pro' },
-      { value: 'apprentissage', label: 'Apprentissage' },
-    ]
-  },
-  {
-    key: 'semestre',
-    label: 'Semestre',
-    type: 'multiselect',
-    options: [
-      { value: 'S1', label: 'Semestre 1' },
-      { value: 'S2', label: 'Semestre 2' },
-      { value: 'S3', label: 'Semestre 3' },
-      { value: 'S4', label: 'Semestre 4' },
-      { value: 'S5', label: 'Semestre 5' },
-      { value: 'S6', label: 'Semestre 6' },
-    ]
-  },
-  {
-    key: 'search',
-    label: 'Recherche',
-    type: 'search',
-    placeholder: 'Nom, module...'
-  }
-]
-
 export default function Scolarite() {
   const { department } = useDepartment()
-  const [filters, setFilters] = useState<FilterValues>({})
+  const [filters, setFilters] = useState<FilterValues>({
+    formation: [],
+    semestre: [],
+    modalite: '',
+    reussite: '',
+    effectif: '',
+    absenteisme: '',
+    search: '',
+  })
   const [year, setYear] = useState<string>('')
   const [period, setPeriod] = useState<string>('all')
 
@@ -61,12 +33,102 @@ export default function Scolarite() {
     queryKey: ['scolarite', 'indicators', department, year],
     queryFn: () => scolariteApi.getIndicators(department, year || undefined),
   })
+  const semestresStats = indicators?.semestres_stats ?? []
 
   const { data: effectifs } = useQuery({
     queryKey: ['scolarite', 'effectifs', department],
     queryFn: () => scolariteApi.getEffectifs(department),
     enabled: !!indicators, // Only fetch if indicators loaded successfully
   })
+
+  const formationOptions = useMemo(
+    () =>
+      indicators?.etudiants_par_formation
+        ? Object.keys(indicators.etudiants_par_formation).map((name) => ({ value: name, label: name }))
+        : [
+            { value: 'BUT', label: 'BUT' },
+            { value: 'Licence Pro', label: 'Licence Pro' },
+            { value: 'Apprentissage', label: 'Apprentissage' },
+          ],
+    [indicators]
+  )
+
+  const filterConfigs: FilterConfig[] = useMemo(
+    () => [
+      {
+        key: 'formation',
+        label: 'Formation',
+        type: 'multiselect',
+        options: formationOptions,
+      },
+      {
+        key: 'modalite',
+        label: 'Modalité',
+        type: 'select',
+        options: [
+          { value: '', label: 'FI + FA' },
+          { value: 'fi', label: 'Formation initiale' },
+          { value: 'fa', label: 'Apprentissage / FA' },
+        ],
+      },
+      {
+        key: 'semestre',
+        label: 'Semestre',
+        type: 'multiselect',
+        options: [
+          { value: 'S1', label: 'Semestre 1' },
+          { value: 'S2', label: 'Semestre 2' },
+          { value: 'S3', label: 'Semestre 3' },
+          { value: 'S4', label: 'Semestre 4' },
+          { value: 'S5', label: 'Semestre 5' },
+          { value: 'S6', label: 'Semestre 6' },
+        ],
+      },
+      {
+        key: 'reussite',
+        label: 'Réussite min.',
+        type: 'select',
+        options: [
+          { value: '', label: 'Toutes' },
+          { value: '50', label: '50%+' },
+          { value: '60', label: '60%+' },
+          { value: '70', label: '70%+' },
+          { value: '80', label: '80%+' },
+          { value: '90', label: '90%+' },
+        ],
+      },
+      {
+        key: 'effectif',
+        label: 'Effectif min.',
+        type: 'select',
+        options: [
+          { value: '', label: 'Tous' },
+          { value: '10', label: '10+' },
+          { value: '20', label: '20+' },
+          { value: '30', label: '30+' },
+          { value: '50', label: '50+' },
+        ],
+      },
+      {
+        key: 'absenteisme',
+        label: 'Absentéisme max.',
+        type: 'select',
+        options: [
+          { value: '', label: 'Tous' },
+          { value: '15', label: '15% max' },
+          { value: '10', label: '10% max' },
+          { value: '5', label: '5% max' },
+        ],
+      },
+      {
+        key: 'search',
+        label: 'Recherche',
+        type: 'search',
+        placeholder: 'Nom, module...'
+      }
+    ],
+    [formationOptions]
+  )
 
   // Handle permission errors
   if (error) {
@@ -88,6 +150,30 @@ export default function Scolarite() {
   if (isLoading) {
     return <div className="flex items-center justify-center h-64">Chargement...</div>
   }
+  // Helpers for filter values
+  const selectedFormations = Array.isArray(filters.formation)
+    ? filters.formation
+    : filters.formation
+    ? [String(filters.formation)]
+    : []
+  const selectedSemestres = Array.isArray(filters.semestre) ? filters.semestre : []
+  const modaliteFilter = (filters.modalite as string) || ''
+  const minReussite = filters.reussite ? Number(filters.reussite) : undefined
+  const minEffectif = filters.effectif ? Number(filters.effectif) : undefined
+  const maxAbsenteisme = filters.absenteisme ? Number(filters.absenteisme) : undefined
+
+  const toPercent = (value: number | undefined) => {
+    if (value === undefined || value === null) return 0
+    return value > 1 ? value : value * 100
+  }
+
+  const normalizeText = (text: string) => text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+
   // Helper: filter semesters by period
   const filterByPeriod = (semCode: string): boolean => {
     if (!period || period === 'all') return true
@@ -107,81 +193,115 @@ export default function Scolarite() {
         value
       }))
     : []
+  const allFormationNames = allFormationData.map((f) => f.name)
   
-  // Apply formation filter (partial match)
-  const formationFilter = filters.formation as string | undefined
-  const formationData = formationFilter && formationFilter.length > 0
-    ? allFormationData.filter(f => f.name.toLowerCase().includes(formationFilter.toLowerCase()))
+  // Apply formation filter (multi)
+  const formationData = selectedFormations.length > 0
+    ? allFormationData.filter((f) =>
+        selectedFormations.some((sel) => normalizeText(f.name).includes(normalizeText(sel)))
+      )
     : allFormationData
 
   // Create a mapping from formation name to color
   const formationColorMap: Record<string, string> = {}
-  formationData.forEach((f, index) => {
-    formationColorMap[f.name] = COLORS[index % COLORS.length]
+  allFormationNames.forEach((name, index) => {
+    formationColorMap[name] = COLORS[index % COLORS.length]
   })
 
   // Helper to find which formation a semester belongs to
   const getFormationFromSemesterName = (semName: string): string => {
-    // The semester name contains the formation name (e.g., "BUT Réseaux et Télécommunications semestre 1")
-    // Check for "apprentissage" first since it's more specific
-    const semLower = semName.toLowerCase()
-    const isApprentissage = semLower.includes('apprentissage')
-    
-    // Find matching formation - prioritize apprentissage match if semester is apprentissage
-    const formations = Object.keys(formationColorMap)
-    
-    if (isApprentissage) {
-      const appFormation = formations.find(f => f.toLowerCase().includes('apprentissage'))
+    const semNormalized = normalizeText(semName)
+    const sortedFormations = [...allFormationNames].sort((a, b) => b.length - a.length)
+
+    const matched = sortedFormations.find((formation) => semNormalized.includes(normalizeText(formation)))
+    if (matched) return matched
+
+    if (semNormalized.includes('appren')) {
+      const appFormation = sortedFormations.find((formation) => normalizeText(formation).includes('appren'))
       if (appFormation) return appFormation
-    } else {
-      // For non-apprentissage semesters, find a formation that does NOT contain "apprentissage"
-      const nonAppFormation = formations.find(f => !f.toLowerCase().includes('apprentissage'))
-      if (nonAppFormation) return nonAppFormation
     }
-    
-    // Fallback: return first formation
-    return formations[0] || ''
+
+    return allFormationNames[0] || ''
   }
 
-  // Prepare chart data - extract short semester name (e.g., "S1", "S3 App")
+  // Prepare chart data - extract short semester name (e.g., "S1 FI", "S3 FA")
   const allSemestreData = indicators?.etudiants_par_semestre
     ? Object.entries(indicators.etudiants_par_semestre).map(([sem, count]) => {
-        // Extract semester number from full name like "BUT Réseaux et Télécommunications semestre 1"
-        const match = sem.match(/semestre\s*(\d+)/i)
-        const semNum = match ? match[1] : '?'
-        const isApprentissage = sem.toLowerCase().includes('apprentissage')
-        const shortName = isApprentissage ? `S${semNum} App` : `S${semNum}`
+        // Extract semester number from full name
+        // Try multiple patterns: "semestre 1", "S1", "Semestre1", etc.
+        const matchSemestre = sem.match(/semestre\s*(\d+)/i)
+        const matchS = sem.match(/\bS(\d+)\b/)
+        const semNum = matchSemestre ? matchSemestre[1] : (matchS ? matchS[1] : '?')
+        
+        // Detect formation type: FA (Apprentissage/Alternance) vs FI (Formation Initiale)
+        const semLower = sem.toLowerCase()
+        const isFA = semLower.includes(' fa ') || semLower.includes(' fa') || 
+                     semLower.endsWith(' fa') || /\bfa\b/i.test(sem) ||
+                     semLower.includes('apprentissage') || semLower.includes('alternance')
+        const isFI = semLower.includes(' fi ') || semLower.includes(' fi') || 
+                     semLower.endsWith(' fi') || /\bfi\b/i.test(sem)
+        
         const formation = getFormationFromSemesterName(sem)
+        
+        // Create short name: "S1 FI" or "S3 FA"
+        let shortName = `S${semNum}`
+        if (isFA) {
+          shortName = `S${semNum} FA`
+        } else if (isFI) {
+          shortName = `S${semNum} FI`
+        }
+
+
+
+        if (formation) {
+          // Extract formation type (BUT, LP, etc.) for shorter label
+          const formType = formation.match(/\b(BUT|LP|DUT|Licence)\b/i)?.[1]?.toUpperCase()
+          if (formType && allFormationNames.length > 1) {
+            shortName = `${formType} ${shortName}`
+          }
+        }
+        
+        const colorIndex = Math.max(allFormationNames.indexOf(formation), 0)
+        const color = formationColorMap[formation] ?? COLORS[colorIndex % COLORS.length] ?? COLORS[0]
         return {
           semestre: shortName,
           fullName: sem,
           etudiants: count,
           formation,
           semNum,
-          color: formationColorMap[formation] || COLORS[0]
+          isFA,
+          color
         }
       })
     : []
-  
+
   // Apply filters to semester data
   const semestreData = allSemestreData.filter(s => {
     // Filter by period
     if (!filterByPeriod(s.semestre)) return false
     // Filter by formation if set
-    if (formationFilter && formationFilter.length > 0) {
-      if (!s.fullName.toLowerCase().includes(formationFilter.toLowerCase()) &&
-          !s.formation.toLowerCase().includes(formationFilter.toLowerCase())) {
-        return false
-      }
+    if (selectedFormations.length > 0) {
+      const matchesFormation = selectedFormations.some((sel) =>
+        normalizeText(sel) === normalizeText(s.formation) ||
+        normalizeText(s.fullName).includes(normalizeText(sel))
+      )
+      if (!matchesFormation) return false
     }
     // Filter by semestre if set
-    if (filters.semestre && Array.isArray(filters.semestre) && filters.semestre.length > 0) {
-      const matchesSemestre = filters.semestre.some((sel: string) => {
+    if (selectedSemestres.length > 0) {
+      const matchesSemestre = selectedSemestres.some((sel: string) => {
         const selNum = sel.replace('S', '')
         return s.semNum === selNum
       })
       if (!matchesSemestre) return false
     }
+    // Filter by modalité
+    if (modaliteFilter === 'fa' && !s.isFA) return false
+    if (modaliteFilter === 'fi' && s.isFA) return false
+
+    // Effectif threshold
+    if (minEffectif && s.etudiants < minEffectif) return false
+
     return true
   })
 
@@ -191,49 +311,6 @@ export default function Scolarite() {
         effectif: count
       }))
     : []
-
-  const moduleColumns = [
-    { key: 'code', header: 'Code' },
-    { key: 'nom', header: 'Module' },
-    { 
-      key: 'moyenne', 
-      header: 'Moyenne',
-      align: 'right' as const,
-      render: (item: ModuleStats) => item.moyenne.toFixed(2)
-    },
-    {
-      key: 'taux_reussite',
-      header: 'Réussite',
-      align: 'right' as const,
-      render: (item: ModuleStats) => (
-        <span className={item.taux_reussite >= 70 ? 'text-green-600' : 'text-orange-600'}>
-          {item.taux_reussite.toFixed(0)}%
-        </span>
-      )
-    },
-    { 
-      key: 'nb_etudiants', 
-      header: 'Étudiants',
-      align: 'right' as const
-    },
-  ]
-
-  // Apply filters to modules
-  const filteredModules = indicators?.modules_stats.filter((mod: ModuleStats) => {
-    if (filters.search && typeof filters.search === 'string') {
-      const search = filters.search.toLowerCase()
-      if (!mod.code.toLowerCase().includes(search) && !mod.nom.toLowerCase().includes(search)) {
-        return false
-      }
-    }
-    if (filters.semestre && Array.isArray(filters.semestre) && filters.semestre.length > 0) {
-      const semNum = mod.code.charAt(1) // R1xxx -> 1 = S1, S2
-      if (!filters.semestre.some(s => s.includes(semNum))) {
-        return false
-      }
-    }
-    return true
-  }) ?? []
 
   return (
     <div className="space-y-6">
@@ -320,7 +397,7 @@ export default function Scolarite() {
                 cx="50%"
                 cy="50%"
                 innerRadius={50}
-                outerRadius={90}
+                outerRadius={80}
                 paddingAngle={2}
                 dataKey="value"
               >
@@ -341,35 +418,48 @@ export default function Scolarite() {
       <div className="card">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Résultats par semestre</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {indicators?.semestres_stats
-            .filter((sem: { code: string; nom: string }) => {
+          {semestresStats
+            .filter((sem: { code: string; nom: string; taux_absenteisme: number; taux_reussite: number }) => {
               // Apply period filter
               if (!filterByPeriod(sem.code)) return false
               // Apply formation filter
-              if (formationFilter && formationFilter.length > 0) {
-                if (!sem.nom.toLowerCase().includes(formationFilter.toLowerCase())) {
-                  return false
-                }
+              if (selectedFormations.length > 0) {
+                const semFormation = getFormationFromSemesterName(sem.nom)
+                const matchesFormation = selectedFormations.some((sel) => normalizeText(sel) === normalizeText(semFormation))
+                if (!matchesFormation) return false
               }
               // Apply semestre filter
-              if (filters.semestre && Array.isArray(filters.semestre) && filters.semestre.length > 0) {
+              if (selectedSemestres.length > 0) {
                 const semNum = sem.code.replace('S', '')
-                if (!filters.semestre.some((s: string) => s.replace('S', '') === semNum)) {
+                if (!selectedSemestres.some((s: string) => s.replace('S', '') === semNum)) {
                   return false
                 }
               }
+              // Modalité filter
+              const semLower = sem.nom.toLowerCase()
+              const isFA = /\bfa\b/i.test(sem.nom) || semLower.includes('apprentissage') || semLower.includes('alternance')
+              if (modaliteFilter === 'fa' && !isFA) return false
+              if (modaliteFilter === 'fi' && isFA) return false
+
+              if (minEffectif !== undefined && sem.nb_etudiants < minEffectif) return false
+              if (minReussite !== undefined && toPercent(sem.taux_reussite) < minReussite) return false
+              if (maxAbsenteisme !== undefined && sem.taux_absenteisme > maxAbsenteisme) return false
               return true
             })
-            .map((sem: { code: string; nom: string; annee: string; nb_etudiants: number; moyenne_generale: number; taux_reussite: number }, index: number) => {
-            const isApprentissage = sem.nom.toLowerCase().includes('apprentissage')
-            const shortName = isApprentissage ? `${sem.code} Apprentissage` : sem.code
-            const tauxReussitePct = sem.taux_reussite < 1 ? sem.taux_reussite * 100 : sem.taux_reussite
+            .map((sem: { code: string; nom: string; annee: string; nb_etudiants: number; moyenne_generale: number; taux_reussite: number; taux_absenteisme: number }, index: number) => {
+            const semLower = sem.nom.toLowerCase()
+            const isFA = /\bfa\b/i.test(sem.nom) || semLower.includes('apprentissage') || semLower.includes('alternance')
+            const isFI = /\bfi\b/i.test(sem.nom)
+            const suffix = isFA ? ' FA' : (isFI ? ' FI' : '')
+            const shortName = `${sem.code}${suffix}`
+            const tauxReussitePct = toPercent(sem.taux_reussite)
             return (
             <div key={`${sem.code}-${index}`} className="p-4 bg-gray-50 rounded-lg">
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <h4 className="font-semibold text-gray-900">{shortName}</h4>
-                  <p className="text-sm text-gray-500">{sem.annee}</p>
+                  <p className="text-sm text-gray-500" title={sem.nom}>{sem.nom}</p>
+                  <p className="text-xs text-gray-400">{sem.annee}</p>
                 </div>
                 <span className="text-sm bg-blue-100 text-blue-700 px-2 py-1 rounded">
                   {sem.nb_etudiants} étudiants
@@ -389,15 +479,6 @@ export default function Scolarite() {
             </div>
           )})}
         </div>
-      </div>
-
-      {/* Modules table */}
-      <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Résultats par module</h3>
-        <DataTable 
-          data={filteredModules}
-          columns={moduleColumns}
-        />
       </div>
 
       {/* Evolution chart */}

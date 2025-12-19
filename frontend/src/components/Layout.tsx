@@ -1,4 +1,4 @@
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { 
   LayoutDashboard, 
   GraduationCap, 
@@ -16,7 +16,8 @@ import {
   Shield,
   AlertTriangle,
   BarChart3,
-  RefreshCw
+  RefreshCw,
+  Target
 } from 'lucide-react'
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -26,17 +27,25 @@ import { useAuth } from '../contexts/AuthContext'
 // Define nav items with optional permission requirements
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, permission: null },
-  { path: '/scolarite', label: 'Scolarité', icon: GraduationCap, permission: 'can_view_scolarite' as const },
-  { path: '/alertes', label: 'Alertes', icon: AlertTriangle, permission: 'can_view_scolarite' as const },
-  { path: '/indicateurs', label: 'Indicateurs', icon: BarChart3, permission: 'can_view_scolarite' as const },
+  { 
+    path: '/scolarite', 
+    label: 'Scolarité', 
+    icon: GraduationCap, 
+    permission: 'can_view_scolarite' as const,
+    children: [
+      { path: '/alertes', label: 'Alertes', icon: AlertTriangle, permission: 'can_view_scolarite' as const },
+      { path: '/indicateurs', label: 'Indicateurs', icon: BarChart3, permission: 'can_view_scolarite' as const },
+      { path: '/analyse-modules', label: 'Analyse modules', icon: Target, permission: 'can_view_scolarite' as const },
+    ]
+  },
   { path: '/recrutement', label: 'Recrutement', icon: Users, permission: 'can_view_recrutement' as const },
   { path: '/budget', label: 'Budget', icon: Wallet, permission: 'can_view_budget' as const },
   { path: '/edt', label: 'EDT', icon: Calendar, permission: 'can_view_edt' as const },
-  { path: '/upload', label: 'Import', icon: Upload, permission: 'can_import' as const },
 ]
 
 const adminItems = [
   { path: '/admin', label: 'Administration', icon: Settings },
+  { path: '/upload', label: 'Import', icon: Upload },
   { path: '/admin/budget', label: 'Gérer Budget', icon: Database },
   { path: '/admin/recrutement', label: 'Gérer Parcoursup', icon: UserPlus },
   { path: '/admin/users', label: 'Utilisateurs', icon: Shield },
@@ -45,6 +54,7 @@ const adminItems = [
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const location = useLocation()
   const { department, setDepartment, departmentName } = useDepartment()
   const { user, logout, isAdmin, checkPermission } = useAuth()
   const queryClient = useQueryClient()
@@ -62,11 +72,29 @@ export default function Layout() {
     ? DEPARTMENTS 
     : DEPARTMENTS.filter(dept => user?.permissions[dept] !== undefined)
 
-  // Filter nav items based on user permissions for current department
-  const visibleNavItems = navItems.filter(item => {
-    if (!item.permission) return true // Dashboard always visible
-    return checkPermission(department, item.permission)
-  })
+  // Filter nav items based on user permissions for current department (parent + children)
+  const visibleNavItems = navItems
+    .map(item => {
+      const children = item.children?.filter(child => {
+        if (!child.permission) return true
+        return checkPermission(department, child.permission)
+      }) ?? []
+      return { ...item, children }
+    })
+    .filter(item => {
+      if (item.permission && !checkPermission(department, item.permission)) {
+        return false
+      }
+      // Keep item if it has no children or if at least one child is visible
+      if (item.children && item.children.length === 0) {
+        return !item.children.length
+      }
+      return true
+    })
+
+  const isPathActive = (path: string) => {
+    return location.pathname === path || location.pathname.startsWith(`${path}/`)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -112,22 +140,49 @@ export default function Layout() {
         </div>
 
         <nav className="p-4 space-y-1">
-          {visibleNavItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) => `
-                flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
-                ${isActive 
-                  ? 'bg-primary-50 text-primary-700 font-medium' 
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}
-              `}
-            >
-              <item.icon className="w-5 h-5" />
-              {item.label}
-            </NavLink>
-          ))}
+          {visibleNavItems.map((item) => {
+            const hasChildren = item.children && item.children.length > 0
+            const isSectionActive = isPathActive(item.path) || item.children?.some(child => isPathActive(child.path))
+
+            return (
+              <div key={item.path} className="space-y-1">
+                <NavLink
+                  to={item.path}
+                  onClick={() => setSidebarOpen(false)}
+                  className={({ isActive }) => `
+                    flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
+                    ${isActive || isSectionActive
+                      ? 'bg-primary-50 text-primary-700 font-medium' 
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}
+                  `}
+                >
+                  <item.icon className="w-5 h-5" />
+                  {item.label}
+                </NavLink>
+
+                {hasChildren && (
+                  <div className="ml-3 space-y-1">
+                    {item.children!.map((child) => (
+                      <NavLink
+                        key={child.path}
+                        to={child.path}
+                        onClick={() => setSidebarOpen(false)}
+                        className={({ isActive }) => `
+                          flex items-center gap-3 px-7 py-2 rounded-lg text-sm transition-colors
+                          ${isActive 
+                            ? 'bg-primary-50 text-primary-700 font-medium' 
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}
+                        `}
+                      >
+                        <child.icon className="w-4 h-4" />
+                        {child.label}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
 
           {/* Separator */}
           <div className="my-4 border-t border-gray-200" />

@@ -4,7 +4,6 @@ import { useDepartment } from '../contexts/DepartmentContext'
 import { useAuth } from '../contexts/AuthContext'
 import ChartContainer from '../components/ChartContainer'
 import StatCard from '../components/StatCard'
-import DataTable from '../components/DataTable'
 import api from '../services/api'
 import {
   GraduationCap,
@@ -66,19 +65,6 @@ interface TableauBord {
   indicateurs_cles: Record<string, { valeur: number; tendance: string; vs_annee_prec: number }>
 }
 
-interface ModuleAnalyse {
-  code: string
-  nom: string
-  moyenne: number
-  ecart_type: number
-  taux_validation: number
-  taux_echec: number
-  alerte: boolean
-  alerte_message?: string
-  semestre?: string
-  formation?: string
-}
-
 interface ComparaisonInterannuelle {
   annees: string[]
   moyennes: number[]
@@ -116,16 +102,6 @@ export default function IndicateursPage() {
     queryFn: () =>
       api.get<TableauBord>(`/${department}/indicateurs/tableau-bord`, {
         params: { annee, semestre: semestre || undefined },
-      }).then(res => res.data),
-    enabled: canView,
-  })
-
-  // Fetch modules analysis
-  const { data: modules, isLoading: modulesLoading } = useQuery({
-    queryKey: ['modules-analyse', department, semestre],
-    queryFn: () =>
-      api.get<ModuleAnalyse[]>(`/${department}/indicateurs/modules`, {
-        params: { semestre: semestre || undefined, tri: 'taux_echec' },
       }).then(res => res.data),
     enabled: canView,
   })
@@ -194,48 +170,6 @@ export default function IndicateursPage() {
         taux: ((taux as number) * 100).toFixed(0),
       }))
     : []
-
-  const modulesColumns = [
-    { key: 'code', header: 'Code' },
-    { key: 'nom', header: 'Module' },
-    { key: 'formation', header: 'Formation' },
-    { key: 'semestre', header: 'Semestre' },
-    {
-      key: 'moyenne',
-      header: 'Moyenne',
-      render: (row: ModuleAnalyse) => (
-        <span className={row.moyenne < 10 ? 'text-red-600 font-medium' : ''}>
-          {row.moyenne.toFixed(1)}
-        </span>
-      ),
-    },
-    {
-      key: 'ecart_type',
-      header: 'Écart-type',
-      render: (row: ModuleAnalyse) => row.ecart_type.toFixed(1),
-    },
-    {
-      key: 'taux_echec',
-      header: 'Taux échec',
-      render: (row: ModuleAnalyse) => (
-        <span className={row.taux_echec > 0.25 ? 'text-red-600 font-medium' : ''}>
-          {(row.taux_echec * 100).toFixed(0)}%
-        </span>
-      ),
-    },
-    {
-      key: 'alerte',
-      header: 'Alerte',
-      render: (row: ModuleAnalyse) =>
-        row.alerte ? (
-          <span className="text-red-600" title={row.alerte_message}>
-            ⚠️
-          </span>
-        ) : (
-          <span className="text-green-600">✓</span>
-        ),
-    },
-  ]
 
   const getTrendIcon = (tendance: string) => {
     if (tendance === 'hausse') return <TrendingUp className="h-4 w-4 text-green-600" />
@@ -428,15 +362,6 @@ export default function IndicateursPage() {
           </ResponsiveContainer>
         </ChartContainer>
       </div>
-
-      {/* Modules analysis table */}
-      <ChartContainer title="Analyse par module (triés par taux d'échec)" loading={modulesLoading} height="h-auto">
-        <DataTable
-          columns={modulesColumns}
-          data={modules || []}
-          emptyMessage="Aucun module à afficher"
-        />
-      </ChartContainer>
 
       {/* Key indicators with trends */}
       {tableau?.indicateurs_cles && (
