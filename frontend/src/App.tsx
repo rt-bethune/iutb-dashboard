@@ -13,7 +13,6 @@ import Login from './pages/Login'
 import PendingValidation from './pages/PendingValidation'
 import UsersManagement from './pages/UsersManagement'
 import Alertes from './pages/Alertes'
-import Indicateurs from './pages/Indicateurs'
 import FicheEtudiant from './pages/FicheEtudiant'
 import EtudiantsListe from './pages/EtudiantsListe'
 import AnalyseModules from './pages/AnalyseModules'
@@ -64,7 +63,6 @@ function App() {
         <Route path="alertes/etudiants-absents" element={<EtudiantsListe />} />
         <Route path="alertes/etudiants-risque-decrochage" element={<EtudiantsListe />} />
         <Route path="alertes/felicitations" element={<EtudiantsListe />} />
-        <Route path="indicateurs" element={<Indicateurs />} />
         <Route path="analyse-modules" element={<AnalyseModules />} />
         <Route path="recrutement" element={<Recrutement />} />
         <Route path="budget" element={<Budget />} />

@@ -68,6 +68,9 @@ async def get_alertes(
     niveau: Optional[str] = Query(None, description="Filtrer par niveau"),
     type_alerte: Optional[str] = Query(None, description="Filtrer par type"),
     semestre: Optional[str] = Query(None, description="Filtrer par semestre"),
+    formation: Optional[str] = Query(None, description="Filtrer par formation"),
+    modalite: Optional[str] = Query(None, description="Filtrer par modalité (FI/FA)"),
+    search: Optional[str] = Query(None, description="Recherche par nom/prénom"),
     limit: int = Query(50, ge=1, le=200),
     refresh: bool = Query(False, description="Force refresh cache"),
 ) -> list[AlerteEtudiant]:
@@ -78,16 +81,11 @@ async def get_alertes(
     Données provenant de l'analyse en temps réel des données ScoDoc.
     """
     semestre_filter = semestre if semestre and semestre.strip() else None
-    cache_key = CacheKeys.alertes_list(department, semestre_filter)
+    formation_filter = formation if formation and formation.strip() else None
+    modalite_filter = modalite if modalite and modalite.strip() else None
+    search_filter = search if search and search.strip() else None
     
     # Try cache first (only for unfiltered requests)
-    if not refresh and not niveau and not type_alerte:
-        cached = await cache.get_raw(cache_key)
-        if cached:
-            logger.debug(f"Cache HIT for alertes {department}")
-            alertes = [AlerteEtudiant.model_validate(a) for a in cached]
-            return alertes[:limit]
-    
     service = get_alertes_service(department)
     
     # Convert string filters to enums if provided
@@ -105,20 +103,41 @@ async def get_alertes(
             type_enum = TypeAlerte(type_alerte)
         except ValueError:
             pass
+
+    cache_key = CacheKeys.alertes_list(
+        department,
+        semestre_filter,
+        niveau=niveau_enum.value if niveau_enum else None,
+        type_alerte=type_enum.value if type_enum else None,
+        formation=formation_filter,
+        modalite=modalite_filter,
+    )
+
+    cacheable = not refresh and not search_filter
+
+    if cacheable:
+        cached = await cache.get_raw(cache_key)
+        if cached:
+            logger.debug(f"Cache HIT for alertes {department}")
+            alertes = [AlerteEtudiant.model_validate(a) for a in cached]
+            return alertes[:limit]
     
+    service_limit = 200 if cacheable else limit
     alertes = await service.get_all_alertes(
         semestre=semestre_filter,
         niveau=niveau_enum,
         type_alerte=type_enum,
-        limit=limit,
+        formation=formation_filter,
+        modalite=modalite_filter,
+        search=search_filter,
+        limit=service_limit,
     )
     
     # If no alerts from ScoDoc (not configured or no data), fallback to mock data
     if not alertes:
         alertes = _get_mock_alertes(niveau, type_alerte, semestre_filter, limit)
     
-    # Cache the unfiltered results
-    if not niveau and not type_alerte and alertes:
+    if cacheable and alertes:
         await cache.set_raw(
             cache_key, 
             [a.model_dump(mode="json") for a in alertes],
@@ -126,7 +145,7 @@ async def get_alertes(
         )
         logger.debug(f"Cached alertes for {department}")
     
-    return alertes
+    return alertes[:limit]
 
 
 def _get_mock_alertes(
@@ -207,11 +226,20 @@ def _get_mock_alertes(
 async def get_statistiques_alertes(
     department: DepartmentDep,
     user: UserDB = Depends(require_view_scolarite),
-    semestre: Optional[str] = None,
+    semestre: Optional[str] = Query(None, description="Filtrer par semestre"),
+    formation: Optional[str] = Query(None, description="Filtrer par formation"),
+    modalite: Optional[str] = Query(None, description="Filtrer par modalité (FI/FA)"),
     refresh: bool = Query(False, description="Force refresh cache"),
 ) -> dict:
     """Statistiques globales sur les alertes (données ScoDoc en temps réel)."""
-    cache_key = CacheKeys.alertes_stats(department, semestre)
+    formation_filter = formation if formation and formation.strip() else None
+    modalite_filter = modalite if modalite and modalite.strip() else None
+    cache_key = CacheKeys.alertes_stats(
+        department,
+        semestre,
+        formation=formation_filter,
+        modalite=modalite_filter,
+    )
     
     # Try cache first
     if not refresh:
@@ -222,7 +250,11 @@ async def get_statistiques_alertes(
     
     service = get_alertes_service(department)
     
-    stats = await service.get_statistiques_alertes(semestre)
+    stats = await service.get_statistiques_alertes(
+        semestre=semestre,
+        formation=formation_filter,
+        modalite=modalite_filter
+    )
     
     # If no stats (ScoDoc unavailable or no data), return mock
     if stats.get("total_alertes", 0) == 0:

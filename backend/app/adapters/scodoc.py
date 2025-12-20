@@ -49,6 +49,7 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         self.token: Optional[str] = None
         self.token_expiry: Optional[datetime] = None
         self.client: Optional[httpx.AsyncClient] = None
+        self._cache: dict[str, Any] = {}
     
     @property
     def source_name(self) -> str:
@@ -110,10 +111,17 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         if not await self.authenticate():
             return None
         
+        # Check instance cache (simple memoization for warmup sessions)
+        cache_key = f"{endpoint}:{str(params)}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
         try:
             response = await self.client.get(endpoint, params=params)
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            self._cache[cache_key] = data
+            return data
         except httpx.HTTPStatusError as e:
             logger.error(f"ScoDoc API error {endpoint}: {e.response.status_code}")
             return None
@@ -188,14 +196,59 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         return await self._api_get(f"/api/formsemestre/{formsemestre_id}/programme")
     
     async def get_formsemestre_assiduites_count(self, formsemestre_id: int) -> Optional[dict]:
-        """Get absences count for a semester.
+        """Get ONLY absences count for a semester.
         
-        Returns dict with: heure (hours absent), compte (absence count), journee, demi
+        WARNING: The ScoDoc /api/assiduites/.../count endpoint does NOT support
+        filtering by 'etat' parameter - it always returns totals for ALL assiduités
+        (PRESENT + ABSENT + RETARD combined).
+        
+        This method fetches the detailed list and counts only ABSENT records.
+        Returns dict with: heure (hours absent), heure_just, heure_non_just
         """
-        return await self._api_get(
-            f"/api/assiduites/formsemestre/{formsemestre_id}/count",
-            params={"metric": "heure"}  # Get all metrics, heure is the key value
+        from datetime import datetime
+        
+        # Fetch the detailed list instead of using /count (which ignores etat filter)
+        assiduites_list = await self._api_get(
+            f"/api/assiduites/formsemestre/{formsemestre_id}"
         )
+        
+        if not assiduites_list or not isinstance(assiduites_list, list):
+            return {"heure": 0, "heure_just": 0, "heure_non_just": 0}
+        
+        # Filter to ONLY count ABSENT records
+        total_hours = 0.0
+        hours_just = 0.0
+        hours_non_just = 0.0
+        
+        for item in assiduites_list:
+            if item.get('etat') != 'ABSENT':
+                continue  # Skip PRESENT and RETARD
+            
+            # Calculate duration in hours
+            try:
+                date_debut_str = item.get('date_debut', '')
+                date_fin_str = item.get('date_fin', '')
+                
+                if date_debut_str and date_fin_str:
+                    date_debut = datetime.fromisoformat(date_debut_str.replace('Z', '+00:00'))
+                    date_fin = datetime.fromisoformat(date_fin_str.replace('Z', '+00:00'))
+                    duration_hours = (date_fin - date_debut).total_seconds() / 3600
+                else:
+                    duration_hours = 2.0  # Default
+            except Exception:
+                duration_hours = 2.0
+            
+            total_hours += duration_hours
+            if item.get('est_just'):
+                hours_just += duration_hours
+            else:
+                hours_non_just += duration_hours
+        
+        return {
+            "heure": round(total_hours, 1),
+            "heure_just": round(hours_just, 1),
+            "heure_non_just": round(hours_non_just, 1),
+        }
     
     async def get_formsemestre_etudiants(self, formsemestre_id: int) -> list[dict]:
         """Get list of students enrolled in a semester."""

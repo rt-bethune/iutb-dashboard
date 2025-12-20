@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Users, UserCheck, TrendingUp, MapPin, AlertCircle, Settings, Calendar } from 'lucide-react'
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts'
@@ -65,11 +65,11 @@ export default function Recrutement() {
           <AlertCircle className="w-16 h-16 text-gray-300 mb-4" />
           <h2 className="text-xl font-semibold text-gray-700 mb-2">Aucune donnée disponible</h2>
           <p className="text-gray-500 mb-6 text-center max-w-md">
-            Les données Parcoursup n'ont pas encore été importées. 
+            Les données Parcoursup n'ont pas encore été importées.
             Utilisez l'interface d'administration pour ajouter des campagnes et des candidats.
           </p>
-          <Link 
-            to="/admin/recrutement" 
+          <Link
+            to="/admin/recrutement"
             className="btn-primary flex items-center gap-2"
           >
             <Settings className="w-4 h-4" />
@@ -82,18 +82,18 @@ export default function Recrutement() {
 
   // Prepare chart data
   const bacData = indicators?.par_type_bac
-    ? Object.entries(indicators.par_type_bac).map(([name, value]) => ({ name, value }))
+    ? Object.entries(indicators.par_type_bac).map(([name, value]) => ({ name, value: value as number }))
     : []
 
   const origineData = indicators?.par_origine
     ? Object.entries(indicators.par_origine)
-        .sort((a, b) => (b[1] as number) - (a[1] as number))
-        .slice(0, 8)
-        .map(([name, value]) => ({ name, value: value as number }))
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .slice(0, 8)
+      .map(([name, value]) => ({ name, value: value as number }))
     : []
 
   const mentionData = indicators?.par_mention
-    ? Object.entries(indicators.par_mention).map(([name, value]) => ({ name, value }))
+    ? Object.entries(indicators.par_mention).map(([name, value]) => ({ name, value: value as number }))
     : []
 
   // Evolution data from indicators (if available) - transform to chart format
@@ -106,8 +106,8 @@ export default function Recrutement() {
 
   const lyceeColumns = [
     { key: 'lycee', header: 'Lycée' },
-    { 
-      key: 'count', 
+    {
+      key: 'count',
       header: 'Candidats',
       align: 'right' as const,
     },
@@ -182,29 +182,29 @@ export default function Recrutement() {
             <YAxis stroke="#6b7280" fontSize={12} />
             <Tooltip />
             <Legend />
-            <Area 
-              type="monotone" 
-              dataKey="voeux" 
-              name="Vœux" 
+            <Area
+              type="monotone"
+              dataKey="voeux"
+              name="Vœux"
               stackId="1"
-              stroke="#3b82f6" 
-              fill="#93c5fd" 
+              stroke="#3b82f6"
+              fill="#93c5fd"
             />
-            <Area 
-              type="monotone" 
-              dataKey="acceptes" 
-              name="Acceptés" 
+            <Area
+              type="monotone"
+              dataKey="acceptes"
+              name="Acceptés"
               stackId="2"
-              stroke="#10b981" 
-              fill="#6ee7b7" 
+              stroke="#10b981"
+              fill="#6ee7b7"
             />
-            <Area 
-              type="monotone" 
-              dataKey="confirmes" 
-              name="Confirmés" 
+            <Area
+              type="monotone"
+              dataKey="confirmes"
+              name="Confirmés"
               stackId="3"
-              stroke="#8b5cf6" 
-              fill="#c4b5fd" 
+              stroke="#8b5cf6"
+              fill="#c4b5fd"
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -273,7 +273,7 @@ export default function Recrutement() {
             <MapPin className="w-5 h-5 text-gray-500" />
             <h3 className="text-lg font-semibold text-gray-900">Top lycées d'origine</h3>
           </div>
-          <DataTable 
+          <DataTable
             data={indicators?.top_lycees ?? []}
             columns={lyceeColumns}
           />
@@ -291,9 +291,9 @@ export default function Recrutement() {
           ].map((step, idx) => (
             <div key={step.label} className="flex items-center gap-4">
               <div className="text-center">
-                <div 
+                <div
                   className={`${step.color} text-white rounded-lg px-6 py-4 min-w-[120px]`}
-                  style={{ 
+                  style={{
                     transform: `scale(${1 - idx * 0.1})`,
                   }}
                 >

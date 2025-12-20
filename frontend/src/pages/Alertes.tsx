@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { useDepartment } from '../contexts/DepartmentContext'
 import { useAuth } from '../contexts/AuthContext'
 import ChartContainer from '../components/ChartContainer'
@@ -15,6 +16,7 @@ import {
   Clock,
   GraduationCap,
 } from 'lucide-react'
+import FilterBar, { YearSelector, PeriodSelector, FilterConfig, FilterValues } from '../components/FilterBar'
 import {
   BarChart,
   Bar,
@@ -69,25 +71,116 @@ const PIE_COLORS = ['#ef4444', '#f97316', '#3b82f6']
 export default function AlertesPage() {
   const { department } = useDepartment()
   const { checkPermission } = useAuth()
-  const [filters, setFilters] = useState({
-    niveau: '',
-    type_alerte: '',
-    semestre: '',
+  const [searchParams] = useSearchParams()
+
+  const [filters, setFilters] = useState<FilterValues>({
+    niveau: searchParams.get('niveau') || '',
+    type_alerte: searchParams.get('type_alerte') || '',
+    semestre: searchParams.get('semestre') || '',
+    formation: searchParams.get('formation') || '',
+    modalite: searchParams.get('modalite') || '',
+    search: searchParams.get('search') || '',
   })
+  const [annee, setAnnee] = useState('2024-2025')
+  const [periode, setPeriode] = useState('current')
+
+  // Sync filters if URL changes
+  useEffect(() => {
+    const niveau = searchParams.get('niveau')
+    const type = searchParams.get('type_alerte')
+    if (niveau !== null || type !== null) {
+      setFilters(prev => ({
+        ...prev,
+        niveau: niveau || prev.niveau,
+        type_alerte: type || prev.type_alerte
+      }))
+    }
+  }, [searchParams])
+
+  const filterConfigs: FilterConfig[] = useMemo(() => [
+    {
+      key: 'niveau',
+      label: 'Niveau',
+      type: 'select',
+      options: [
+        { value: '', label: 'Tous les niveaux' },
+        { value: 'critique', label: '🔴 Critique' },
+        { value: 'attention', label: '🟠 Attention' },
+        { value: 'info', label: '🟡 Info' },
+      ]
+    },
+    {
+      key: 'type_alerte',
+      label: 'Type d\'alerte',
+      type: 'select',
+      options: [
+        { value: '', label: 'Tous les types' },
+        ...Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label }))
+      ]
+    },
+    {
+      key: 'semestre',
+      label: 'Semestre',
+      type: 'select',
+      options: [
+        { value: '', label: 'Tous' },
+        { value: 'S1', label: 'S1' },
+        { value: 'S2', label: 'S2' },
+        { value: 'S3', label: 'S3' },
+        { value: 'S4', label: 'S4' },
+        { value: 'S5', label: 'S5' },
+        { value: 'S6', label: 'S6' },
+      ]
+    },
+    {
+      key: 'formation',
+      label: 'Formation',
+      type: 'select',
+      options: [
+        { value: '', label: 'Toutes' },
+        { value: 'BUT1', label: 'BUT1' },
+        { value: 'BUT2', label: 'BUT2' },
+        { value: 'BUT3', label: 'BUT3' },
+        { value: 'LP', label: 'Licence Pro' },
+      ]
+    },
+    {
+      key: 'modalite',
+      label: 'Modalité',
+      type: 'select',
+      options: [
+        { value: '', label: 'Toutes' },
+        { value: 'FI', label: 'Initial' },
+        { value: 'FA', label: 'Alternance' },
+      ]
+    },
+    {
+      key: 'search',
+      label: 'Recherche',
+      type: 'search',
+      placeholder: 'Nom ou prénom...'
+    }
+  ], [])
 
   const canView = checkPermission(department, 'can_view_scolarite')
 
+  const queryParams = useMemo(() => ({
+    ...filters,
+    annee,
+    periode
+  }), [filters, annee, periode])
+
   // Fetch alertes
   const { data: alertes, isLoading: alertesLoading } = useQuery({
-    queryKey: ['alertes', department, filters],
-    queryFn: () => api.get<Alerte[]>(`/${department}/alertes/`, { params: filters }).then(res => res.data),
+    queryKey: ['alertes', department, queryParams],
+    queryFn: () => api.get<Alerte[]>(`/${department}/alertes/`, { params: queryParams }).then(res => res.data),
     enabled: canView,
   })
 
   // Fetch statistiques
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['alertes-stats', department],
-    queryFn: () => api.get<StatistiquesAlertes>(`/${department}/alertes/statistiques`).then(res => res.data),
+    queryKey: ['alertes-stats', department, queryParams],
+    queryFn: () => api.get<StatistiquesAlertes>(`/${department}/alertes/statistiques`, { params: queryParams }).then(res => res.data),
     enabled: canView,
   })
 
@@ -102,32 +195,19 @@ export default function AlertesPage() {
     )
   }
 
-  const filterOptions = [
-    {
-      name: 'niveau',
-      label: 'Niveau',
-      options: [
-        { value: '', label: 'Tous les niveaux' },
-        { value: 'critique', label: '🔴 Critique' },
-        { value: 'attention', label: '🟠 Attention' },
-        { value: 'info', label: '🟡 Info' },
-      ],
-    },
-  ]
-
   // Prepare chart data
   const niveauChartData = stats
     ? Object.entries(stats.par_niveau).map(([niveau, count]) => ({
-        name: niveau.charAt(0).toUpperCase() + niveau.slice(1),
-        value: count,
-      }))
+      name: niveau.charAt(0).toUpperCase() + niveau.slice(1),
+      value: count,
+    }))
     : []
 
   const typeChartData = stats
     ? Object.entries(stats.par_type).map(([type, count]) => ({
-        name: TYPE_LABELS[type] || type,
-        value: count,
-      }))
+      name: TYPE_LABELS[type] || type,
+      value: count,
+    }))
     : []
 
   const columns = [
@@ -178,14 +258,25 @@ export default function AlertesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Alertes Étudiants</h1>
           <p className="text-gray-500">
             Suivi des étudiants en difficulté - Département {department}
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <PeriodSelector value={periode} onChange={setPeriode} />
+          <YearSelector value={annee} onChange={setAnnee} />
+        </div>
       </div>
+
+      {/* Filter Bar */}
+      <FilterBar
+        filters={filterConfigs}
+        values={filters}
+        onChange={setFilters}
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -299,50 +390,6 @@ export default function AlertesPage() {
         </a>
       </div>
 
-      {/* Filter selects */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Niveau</label>
-            <select
-              value={filters.niveau}
-              onChange={(e) => setFilters({ ...filters, niveau: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            >
-              <option value="">Tous les niveaux</option>
-              <option value="critique">🔴 Critique</option>
-              <option value="attention">🟠 Attention</option>
-              <option value="info">🟡 Info</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-            <select
-              value={filters.type_alerte}
-              onChange={(e) => setFilters({ ...filters, type_alerte: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            >
-              <option value="">Tous les types</option>
-              {Object.entries(TYPE_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Semestre</label>
-            <select
-              value={filters.semestre}
-              onChange={(e) => setFilters({ ...filters, semestre: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            >
-              <option value="">Tous</option>
-              {['S1', 'S2', 'S3', 'S4', 'S5', 'S6'].map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
 
       {/* Alerts table */}
       <ChartContainer title="Liste des alertes" loading={alertesLoading} height="h-auto">

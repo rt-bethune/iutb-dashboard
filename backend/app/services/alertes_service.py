@@ -26,6 +26,41 @@ class AlertesService:
     def __init__(self, adapter: ScoDocAdapter, config: Optional[ConfigAlerte] = None):
         self.adapter = adapter
         self.config = config or ConfigAlerte()
+
+    def _filter_semestres(
+        self,
+        semestres: list[dict],
+        semestre: Optional[str] = None,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> list[dict]:
+        """Apply filters to a list of semesters."""
+        if semestre:
+            semestres = [s for s in semestres if f"S{s.get('semestre_id')}" == semestre]
+        
+        if formation:
+            formation_norm = formation.lower()
+            semestres = [
+                s for s in semestres 
+                if formation_norm in (s.get('titre', '') or '').lower() 
+                or formation_norm in (s.get('titre_formation', '') or '').lower()
+            ]
+
+        if modalite:
+            mod_norm = modalite.lower()
+            if mod_norm == 'fa':
+                semestres = [
+                    s for s in semestres 
+                    if ' fa' in (s.get('titre', '') or '').lower() 
+                    or 'apprentissage' in (s.get('titre', '') or '').lower()
+                ]
+            elif mod_norm == 'fi':
+                semestres = [
+                    s for s in semestres 
+                    if not (' fa' in (s.get('titre', '') or '').lower() 
+                    or 'apprentissage' in (s.get('titre', '') or '').lower())
+                ]
+        return semestres
     
     async def get_etudiant_details(self, etudiant_id: str) -> Optional[dict]:
         """Fetch student details from ScoDoc."""
@@ -59,56 +94,83 @@ class AlertesService:
         )
     
     async def get_etudiant_absences(self, etudiant_id: str) -> Optional[dict]:
-        """Get student's absence counts using the assiduites_count endpoint.
+        """Get student's absence counts by fetching the assiduités list and filtering.
         
-        Uses /api/assiduites/etudid/{id}/count with split=true to get counts by state.
+        IMPORTANT: The ScoDoc /api/assiduites/etudid/{id}/count endpoint does NOT
+        support filtering by 'etat' parameter - it always returns the total count
+        for ALL assiduités (present + absent + retard).
+        
+        Therefore, we must:
+        1. Fetch the detailed list from /api/assiduites/etudid/{id}
+        2. Filter client-side by etat == 'ABSENT'
+        3. Calculate hours from (date_fin - date_debut) for each absence
+        
+        ScoDoc assiduités states: ABSENT, PRESENT, RETARD
         """
         if not await self.adapter.authenticate():
             return None
         
         try:
-            # Use the correct assiduites_count endpoint with split to get breakdown
-            count_data = await self.adapter._api_get(
-                f"/api/assiduites/etudid/{etudiant_id}/count",
-                params={"metric": "heure", "split": "true"}
+            # Fetch the detailed assiduités list for this student
+            assiduites_list = await self.adapter._api_get(
+                f"/api/assiduites/etudid/{etudiant_id}"
             )
             
-            if count_data is None:
+            if not assiduites_list or not isinstance(assiduites_list, list):
                 return {
                     "absences": [],
                     "counts": {"nbabs": 0, "nbabs_just": 0, "nbabs_non_just": 0}
                 }
             
-            # Parse the count response - it returns counts split by state
-            # Example: {"absent": {"heure": 10, "heure_just": 2, "heure_non_just": 8}, ...}
-            total_abs = 0
-            abs_just = 0
-            abs_non_just = 0
+            # Filter to get only ABSENT records (exclude PRESENT and RETARD)
+            absences = [a for a in assiduites_list if a.get('etat') == 'ABSENT']
             
-            if isinstance(count_data, dict):
-                # Handle split response format
-                absent_data = count_data.get("absent", {})
-                if isinstance(absent_data, dict):
-                    total_abs = absent_data.get("heure", 0) or 0
-                    abs_just = absent_data.get("heure_just", 0) or 0
-                    abs_non_just = absent_data.get("heure_non_just", 0) or 0
-                else:
-                    # Fallback for simple format
-                    total_abs = count_data.get("heure", 0) or 0
-                    abs_just = count_data.get("heure_just", 0) or 0
-                    abs_non_just = count_data.get("heure_non_just", 0) or 0
+            # Calculate total hours from date_debut/date_fin
+            total_hours = 0.0
+            hours_just = 0.0
+            hours_non_just = 0.0
+            
+            for absence in absences:
+                # Calculate duration in hours
+                try:
+                    from datetime import datetime
+                    date_debut_str = absence.get('date_debut', '')
+                    date_fin_str = absence.get('date_fin', '')
+                    
+                    if date_debut_str and date_fin_str:
+                        # Parse ISO format dates (e.g., '2024-10-11T15:00:00+02:00')
+                        date_debut = datetime.fromisoformat(date_debut_str.replace('Z', '+00:00'))
+                        date_fin = datetime.fromisoformat(date_fin_str.replace('Z', '+00:00'))
+                        duration_hours = (date_fin - date_debut).total_seconds() / 3600
+                    else:
+                        # Default to 2 hours if no time info
+                        duration_hours = 2.0
+                except Exception:
+                    duration_hours = 2.0  # Default duration
                 
-                # If we don't have the breakdown, estimate
-                if total_abs > 0 and abs_just == 0 and abs_non_just == 0:
-                    abs_non_just = total_abs
+                total_hours += duration_hours
+                
+                # Check if justified
+                if absence.get('est_just'):
+                    hours_just += duration_hours
+                else:
+                    hours_non_just += duration_hours
+            
+            # Round to reasonable precision
+            total_hours = round(total_hours, 1)
+            hours_just = round(hours_just, 1)
+            hours_non_just = round(hours_non_just, 1)
+            
+            logger.debug(f"Student {etudiant_id} absences: {len(absences)} records, "
+                        f"total={total_hours}h, just={hours_just}h, non_just={hours_non_just}h")
             
             return {
-                "absences": [],  # We don't have the detail list from count endpoint
-                "counts": {"nbabs": total_abs, "nbabs_just": abs_just, "nbabs_non_just": abs_non_just}
+                "absences": absences,  # Include the detail list for further processing
+                "counts": {"nbabs": total_hours, "nbabs_just": hours_just, "nbabs_non_just": hours_non_just}
             }
             
         except Exception as e:
-            logger.debug(f"Assiduites count endpoint error for student {etudiant_id}: {e}")
+            logger.error(f"Error fetching assiduites for student {etudiant_id}: {e}")
             return {
                 "absences": [],
                 "counts": {"nbabs": 0, "nbabs_just": 0, "nbabs_non_just": 0}
@@ -290,6 +352,9 @@ class AlertesService:
         niveau: Optional[NiveauAlerte] = None,
         type_alerte: Optional[TypeAlerte] = None,
         limit: int = 50,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+        search: Optional[str] = None,
     ) -> list[AlerteEtudiant]:
         """Get all alerts for the department by analyzing current students."""
         alertes = []
@@ -305,25 +370,64 @@ class AlertesService:
                 logger.warning("No current semesters found")
                 return []
             
+            # Filter semesters
+            semestres = self._filter_semestres(semestres, semestre, formation, modalite)
+            
+            if not semestres:
+                logger.warning("No semesters matching filters found")
+                return []
+            
             # Process each semester
             for sem in semestres:
                 sem_id = sem.get("formsemestre_id")
-                sem_name = f"S{sem.get('semestre_id', '?')}"
-                
-                # Filter by semestre if specified
-                if semestre and sem_name != semestre:
+                if not sem_id:
                     continue
+                
+                sem_name = f"S{sem.get('semestre_id', '?')}"
                 
                 # Get results for this semester
                 resultats = await self.adapter.get_formsemestre_resultats(sem_id)
                 if not resultats or not isinstance(resultats, list):
                     continue
                 
-                # Get absences for the semester
-                assiduites = await self.adapter.get_formsemestre_assiduites_count(sem_id)
-                total_absences_sem = assiduites.get("heure", 0) if assiduites else 0
+                # Get ALL assiduités for this semester (list, not count)
+                # to calculate per-student absence hours
+                assiduites_list = await self.adapter._api_get(
+                    f"/api/assiduites/formsemestre/{sem_id}"
+                )
+                
+                # Build per-student absence hours map (only count ABSENT, not PRESENT/RETARD)
+                absences_by_student = {}  # etudid -> hours_non_justified
+                if assiduites_list and isinstance(assiduites_list, list):
+                    from datetime import datetime
+                    for item in assiduites_list:
+                        if item.get('etat') != 'ABSENT':
+                            continue  # Skip PRESENT and RETARD
+                        
+                        etudid = str(item.get('etudid', ''))
+                        if not etudid:
+                            continue
+                        
+                        # Only count non-justified absences for alerts
+                        if item.get('est_just'):
+                            continue
+                        
+                        # Calculate duration
+                        try:
+                            date_debut_str = item.get('date_debut', '')
+                            date_fin_str = item.get('date_fin', '')
+                            if date_debut_str and date_fin_str:
+                                date_debut = datetime.fromisoformat(date_debut_str.replace('Z', '+00:00'))
+                                date_fin = datetime.fromisoformat(date_fin_str.replace('Z', '+00:00'))
+                                duration = (date_fin - date_debut).total_seconds() / 3600
+                            else:
+                                duration = 2.0
+                        except Exception:
+                            duration = 2.0
+                        
+                        absences_by_student[etudid] = absences_by_student.get(etudid, 0) + duration
+                
                 nb_etudiants = len(resultats)
-                avg_absences_per_student = total_absences_sem / nb_etudiants if nb_etudiants > 0 else 0
                 
                 # Process each student
                 for etud_res in resultats:
@@ -345,9 +449,10 @@ class AlertesService:
                     except (ValueError, TypeError):
                         continue
                     
-                    # Estimate individual absence rate (simplified - would need per-student data)
-                    # For now, use department average as placeholder
-                    taux_abs_estime = avg_absences_per_student / 400  # Assuming 400h/semester
+                    # Get actual per-student non-justified absence hours
+                    student_abs_hours = absences_by_student.get(etudid, 0)
+                    # Calculate rate: hours absent / estimated 400h per semester
+                    taux_abs = student_abs_hours / 400
                     
                     # Find weak modules (moyenne < 10)
                     modules_faibles = []
@@ -367,12 +472,20 @@ class AlertesService:
                         etudiant_nom=nom,
                         etudiant_prenom=prenom,
                         moyenne=moyenne,
-                        taux_absenteisme=taux_abs_estime,
+                        taux_absenteisme=taux_abs,
                         progression=0,  # Would need historical data
                         semestre=sem_name,
                         modules_faibles=modules_faibles[:5],  # Limit to 5 modules
                     )
                     alertes.extend(student_alertes)
+            
+            # Apply individual student filters (search)
+            if search:
+                s_norm = search.lower()
+                alertes = [
+                    a for a in alertes 
+                    if s_norm in a.etudiant_nom.lower() or s_norm in a.etudiant_prenom.lower()
+                ]
             
             # Apply filters
             if niveau:
@@ -708,9 +821,19 @@ class AlertesService:
             logger.error(f"Error building student profile: {e}", exc_info=True)
             return None
     
-    async def get_statistiques_alertes(self, semestre: Optional[str] = None) -> dict:
+    async def get_statistiques_alertes(
+        self,
+        semestre: Optional[str] = None,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> dict:
         """Get global alert statistics."""
-        alertes = await self.get_all_alertes(semestre=semestre, limit=500)
+        alertes = await self.get_all_alertes(
+            semestre=semestre, 
+            formation=formation, 
+            modalite=modalite, 
+            limit=1000
+        )
         
         par_niveau = {"critique": 0, "attention": 0, "info": 0}
         par_type = {}
@@ -843,13 +966,22 @@ class AlertesService:
     async def get_etudiants_absents(self, seuil_absences: float = 0.15) -> list[ProfilEtudiant]:
         """Get students with high absenteeism rate.
         
-        Note: The assiduites endpoint may not be available on all ScoDoc instances.
-        This method attempts to use the formsemestre-level absence count endpoint instead.
+        IMPORTANT: The ScoDoc /api/assiduites/.../count endpoint does NOT support
+        filtering by 'etat' parameter. It always returns totals for ALL states.
+        
+        Therefore, we must:
+        1. Fetch the detailed assiduités list for each formsemestre
+        2. Filter client-side by etat == 'ABSENT'
+        3. Group by student and calculate hours
+        
+        ScoDoc assiduités states: ABSENT, PRESENT, RETARD
         """
         if not await self.adapter.authenticate():
             return []
         
         try:
+            from datetime import datetime
+            
             # Get current semesters
             semesters = await self.adapter.get_formsemestres_courants()
             if not semesters:
@@ -863,69 +995,95 @@ class AlertesService:
                 if not sem_id:
                     continue
                 
-                # Try to get absences count for the whole semester
-                # This endpoint returns absence counts per student for the semester
-                abs_count = await self.adapter._api_get(
-                    f"/api/assiduites/formsemestre/{sem_id}/count",
-                    params={"metric": "heure"}
+                # Fetch ALL assiduités for this semester (list, not count)
+                assiduites_list = await self.adapter._api_get(
+                    f"/api/assiduites/formsemestre/{sem_id}"
                 )
                 
-                if not abs_count or not isinstance(abs_count, dict):
+                if not assiduites_list or not isinstance(assiduites_list, list):
                     continue
                 
-                # abs_count should be a dict with etudid -> {nbabs, nbabs_just, ...}
-                # or it might be the total for the semester
-                # Let's also get students from this semester
+                # Filter to only ABSENT records and group by student
+                # Calculate hours for each student
+                absences_by_student = {}  # etudid -> {"hours": float, "hours_just": float, "hours_non_just": float}
+                
+                for item in assiduites_list:
+                    if item.get('etat') != 'ABSENT':
+                        continue  # Skip PRESENT and RETARD
+                    
+                    etudid = str(item.get('etudid', ''))
+                    if not etudid:
+                        continue
+                    
+                    # Calculate duration in hours
+                    try:
+                        date_debut_str = item.get('date_debut', '')
+                        date_fin_str = item.get('date_fin', '')
+                        
+                        if date_debut_str and date_fin_str:
+                            date_debut = datetime.fromisoformat(date_debut_str.replace('Z', '+00:00'))
+                            date_fin = datetime.fromisoformat(date_fin_str.replace('Z', '+00:00'))
+                            duration_hours = (date_fin - date_debut).total_seconds() / 3600
+                        else:
+                            duration_hours = 2.0  # Default
+                    except Exception:
+                        duration_hours = 2.0
+                    
+                    if etudid not in absences_by_student:
+                        absences_by_student[etudid] = {"hours": 0, "hours_just": 0, "hours_non_just": 0}
+                    
+                    absences_by_student[etudid]["hours"] += duration_hours
+                    if item.get('est_just'):
+                        absences_by_student[etudid]["hours_just"] += duration_hours
+                    else:
+                        absences_by_student[etudid]["hours_non_just"] += duration_hours
+                
+                # Get student results to match names
                 resultats = await self.adapter.get_formsemestre_resultats(sem_id)
                 if not resultats or not isinstance(resultats, list):
                     continue
                 
-                for etud in resultats:
-                    etudid = str(etud.get("etudid", ""))
-                    if not etudid or etudid in seen_etudids:
+                # Build student lookup
+                student_info = {str(e.get("etudid")): e for e in resultats}
+                
+                # Filter students exceeding threshold (default: 5+ hours non-justified)
+                threshold_hours = 5.0  # Minimum non-justified absence hours to flag
+                
+                for etudid, abs_data in absences_by_student.items():
+                    if etudid in seen_etudids:
                         continue
                     seen_etudids.add(etudid)
                     
-                    # Check if this student has absence data
-                    etud_abs = abs_count.get(etudid) or abs_count.get(int(etudid)) if isinstance(abs_count, dict) else None
-                    
-                    # If abs_count is not per-student, skip this approach
-                    if not etud_abs:
+                    hours_non_just = abs_data["hours_non_just"]
+                    if hours_non_just < threshold_hours:
                         continue
                     
-                    nbabs = etud_abs.get("nbabs", 0) if isinstance(etud_abs, dict) else 0
-                    nbabs_just = etud_abs.get("nbabs_just", 0) if isinstance(etud_abs, dict) else 0
-                    nbabs_non_just = nbabs - nbabs_just
+                    # Determine alert level
+                    niveau = "critique" if hours_non_just >= 20 else "attention"
                     
-                    # Check if exceeds threshold (5+ non-justified absences)
-                    if nbabs_non_just >= 5:
-                        niveau = "critique" if nbabs_non_just >= 10 else "attention"
-                        
-                        # Get name from resultats
-                        nom = etud.get("nom_disp") or etud.get("nom_short") or ""
-                        prenom = etud.get("prenom", "")
-                        moyenne = None
-                        try:
-                            moyenne = float(etud.get("moy_gen")) if etud.get("moy_gen") is not None else None
-                        except (ValueError, TypeError):
-                            pass
-                        
-                        profil = ProfilEtudiant(
-                            id=etudid,
-                            nom=nom.upper() if nom else "",
-                            prenom=prenom.capitalize() if prenom else "",
-                            formation=sem.get("titre", "BUT"),
-                            semestre_actuel=f"S{sem.get('semestre_id', '?')}",
-                            moyenne_actuelle=moyenne,
-                            rang_promo=etud.get("rang"),
-                            niveau_alerte_max=niveau,
-                        )
-                        result.append(profil)
+                    # Get student info
+                    etud = student_info.get(etudid, {})
+                    nom = etud.get("nom_disp") or etud.get("nom_short") or ""
+                    prenom = etud.get("prenom", "")
+                    moyenne = None
+                    try:
+                        moyenne = float(etud.get("moy_gen")) if etud.get("moy_gen") is not None else None
+                    except (ValueError, TypeError):
+                        pass
+                    
+                    profil = ProfilEtudiant(
+                        id=etudid,
+                        nom=nom.upper() if nom else "",
+                        prenom=prenom.capitalize() if prenom else "",
+                        formation=sem.get("titre", "BUT"),
+                        semestre_actuel=f"S{sem.get('semestre_id', '?')}",
+                        moyenne_actuelle=moyenne,
+                        rang_promo=etud.get("rang"),
+                        niveau_alerte_max=niveau,
+                    )
+                    result.append(profil)
             
-            # If no results from formsemestre endpoint, log a warning
-            if not result:
-                logger.info("No absence data available - assiduites endpoint may not be enabled")
-            
+            logger.info(f"Found {len(result)} students with high absenteeism")
             return result
             
         except Exception as e:

@@ -1,9 +1,9 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { 
-  LayoutDashboard, 
-  GraduationCap, 
-  Users, 
-  Wallet, 
+import {
+  LayoutDashboard,
+  GraduationCap,
+  Users,
+  Wallet,
   Calendar,
   Settings,
   Menu,
@@ -17,24 +17,25 @@ import {
   AlertTriangle,
   BarChart3,
   RefreshCw,
-  Target
+  Target,
+  Loader2
 } from 'lucide-react'
 import { useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useDepartment, DEPARTMENTS, DEPARTMENT_NAMES, type Department } from '../contexts/DepartmentContext'
 import { useAuth } from '../contexts/AuthContext'
+import { adminApi } from '../services/api'
 
 // Define nav items with optional permission requirements
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, permission: null },
-  { 
-    path: '/scolarite', 
-    label: 'Scolarité', 
-    icon: GraduationCap, 
+  {
+    path: '/scolarite',
+    label: 'Scolarité',
+    icon: GraduationCap,
     permission: 'can_view_scolarite' as const,
     children: [
       { path: '/alertes', label: 'Alertes', icon: AlertTriangle, permission: 'can_view_scolarite' as const },
-      { path: '/indicateurs', label: 'Indicateurs', icon: BarChart3, permission: 'can_view_scolarite' as const },
       { path: '/analyse-modules', label: 'Analyse modules', icon: Target, permission: 'can_view_scolarite' as const },
     ]
   },
@@ -54,22 +55,39 @@ const adminItems = [
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshSuccess, setRefreshSuccess] = useState(false)
   const location = useLocation()
   const { department, setDepartment, departmentName } = useDepartment()
   const { user, logout, isAdmin, checkPermission } = useAuth()
   const queryClient = useQueryClient()
+  const isFetching = useIsFetching()
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    // Invalidate all queries to force refetch
-    await queryClient.invalidateQueries()
-    // Small delay for visual feedback
-    setTimeout(() => setIsRefreshing(false), 500)
+    try {
+      // Trigger backend cache refresh for current department
+      // This forces the backend to re-fetch data from sources (ScoDoc, etc.)
+      await adminApi.warmupCache(department)
+
+      // Invalidate all queries to force refetch on frontend
+      await queryClient.invalidateQueries()
+
+      setRefreshSuccess(true)
+      setTimeout(() => setRefreshSuccess(false), 3000)
+
+      // Small additional delay for visual feedback if it was too fast
+      setTimeout(() => setIsRefreshing(false), 500)
+    } catch (error) {
+      console.error('Failed to refresh data:', error)
+      // Fallback: still invalidate queries to try and get whatever is available
+      await queryClient.invalidateQueries()
+      setIsRefreshing(false)
+    }
   }
 
   // Filter departments based on user permissions (show only departments where user has at least one permission)
-  const accessibleDepartments = user?.is_superadmin 
-    ? DEPARTMENTS 
+  const accessibleDepartments = user?.is_superadmin
+    ? DEPARTMENTS
     : DEPARTMENTS.filter(dept => user?.permissions[dept] !== undefined)
 
   // Filter nav items based on user permissions for current department (parent + children)
@@ -100,7 +118,7 @@ export default function Layout() {
     <div className="min-h-screen bg-gray-50">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
@@ -152,7 +170,7 @@ export default function Layout() {
                   className={({ isActive }) => `
                     flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
                     ${isActive || isSectionActive
-                      ? 'bg-primary-50 text-primary-700 font-medium' 
+                      ? 'bg-primary-50 text-primary-700 font-medium'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}
                   `}
                 >
@@ -169,8 +187,8 @@ export default function Layout() {
                         onClick={() => setSidebarOpen(false)}
                         className={({ isActive }) => `
                           flex items-center gap-3 px-7 py-2 rounded-lg text-sm transition-colors
-                          ${isActive 
-                            ? 'bg-primary-50 text-primary-700 font-medium' 
+                          ${isActive
+                            ? 'bg-primary-50 text-primary-700 font-medium'
                             : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}
                         `}
                       >
@@ -200,8 +218,8 @@ export default function Layout() {
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
                     flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
-                    ${isActive 
-                      ? 'bg-primary-50 text-primary-700 font-medium' 
+                    ${isActive
+                      ? 'bg-primary-50 text-primary-700 font-medium'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}
                   `}
                 >
@@ -236,7 +254,7 @@ export default function Layout() {
             </div>
           )}
           <div className="text-xs text-gray-400">
-            v0.1.0 
+            v0.1.0
           </div>
         </div>
       </aside>
@@ -252,25 +270,36 @@ export default function Layout() {
             >
               <Menu className="w-6 h-6" />
             </button>
-            
+
             <div className="flex items-center gap-4 ml-auto">
+              {isFetching > 0 && (
+                <div className="flex items-center gap-2 text-primary-600 animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-xs font-medium hidden sm:block">Chargement...</span>
+                </div>
+              )}
               <button
                 onClick={handleRefresh}
                 disabled={isRefreshing}
-                className="p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 relative group"
                 title="Rafraîchir les données"
               >
                 <RefreshCw className={`w-5 h-5 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {refreshSuccess && (
+                  <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-green-600 text-white text-[10px] py-1 px-2 rounded shadow-sm whitespace-nowrap z-50 animate-fade-in-up">
+                    Données à jour !
+                  </span>
+                )}
               </button>
               <span className="px-3 py-1 text-sm font-medium text-primary-700 bg-primary-50 rounded-full">
                 {department} - {departmentName}
               </span>
               <span className="text-sm text-gray-500">
-                {new Date().toLocaleDateString('fr-FR', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
+                {new Date().toLocaleDateString('fr-FR', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
                 })}
               </span>
             </div>

@@ -2,6 +2,8 @@
 
 import json
 import logging
+import re
+import unicodedata
 from typing import Any, Optional, TypeVar, Type
 from datetime import datetime
 
@@ -283,52 +285,210 @@ class CacheKeys:
     TTL_MEDIUM = 1800    # 30 minutes
     TTL_LONG = 3600      # 1 hour
     TTL_STUDENT = 600    # 10 minutes for individual student data
+
+    @staticmethod
+    def _key_part(value: Optional[str]) -> str:
+        if value is None:
+            return "all"
+        value = str(value).strip()
+        if not value:
+            return "all"
+        normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
+        normalized = normalized.lower()
+        normalized = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+        return normalized or "all"
     
     @staticmethod
-    def alertes_list(department: str, semestre: Optional[str] = None) -> str:
+    def alertes_list(
+        department: str,
+        semestre: Optional[str] = None,
+        *,
+        niveau: Optional[str] = None,
+        type_alerte: Optional[str] = None,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> str:
         sem = semestre or "all"
-        return f"alertes:{department}:list:{sem}"
+        base = f"alertes:{department}:list:{sem}"
+        if any([niveau, type_alerte, formation, modalite]):
+            n = CacheKeys._key_part(niveau)
+            t = CacheKeys._key_part(type_alerte)
+            f = CacheKeys._key_part(formation)
+            m = CacheKeys._key_part(modalite)
+            return f"{base}:{n}:{t}:{f}:{m}"
+        return base
     
     @staticmethod
-    def alertes_stats(department: str, semestre: Optional[str] = None) -> str:
+    def alertes_stats(
+        department: str,
+        semestre: Optional[str] = None,
+        *,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> str:
         sem = semestre or "all"
-        return f"alertes:{department}:stats:{sem}"
+        base = f"alertes:{department}:stats:{sem}"
+        if any([formation, modalite]):
+            f = CacheKeys._key_part(formation)
+            m = CacheKeys._key_part(modalite)
+            return f"{base}:{f}:{m}"
+        return base
     
     @staticmethod
     def fiche_etudiant(department: str, etudiant_id: str) -> str:
         return f"alertes:{department}:fiche:{etudiant_id}"
     
     @staticmethod
-    def indicateurs_tableau_bord(department: str, annee: Optional[str] = None, semestre: Optional[str] = None) -> str:
+    def indicateurs_tableau_bord(
+        department: str,
+        annee: Optional[str] = None,
+        semestre: Optional[str] = None,
+        *,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> str:
         a = annee or "current"
         s = semestre or "all"
-        return f"indicateurs:{department}:tableau_bord:{a}:{s}"
+        base = f"indicateurs:{department}:tableau_bord:{a}:{s}"
+        if any([formation, modalite]):
+            f = CacheKeys._key_part(formation)
+            m = CacheKeys._key_part(modalite)
+            return f"{base}:{f}:{m}"
+        return base
     
     @staticmethod
-    def indicateurs_statistiques(department: str, semestre: Optional[str] = None) -> str:
+    def indicateurs_statistiques(
+        department: str,
+        semestre: Optional[str] = None,
+        *,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> str:
         sem = semestre or "all"
-        return f"indicateurs:{department}:statistiques:{sem}"
+        base = f"indicateurs:{department}:statistiques:{sem}"
+        if any([formation, modalite]):
+            f = CacheKeys._key_part(formation)
+            m = CacheKeys._key_part(modalite)
+            return f"{base}:{f}:{m}"
+        return base
     
     @staticmethod
-    def indicateurs_taux_validation(department: str, semestre: Optional[str] = None) -> str:
+    def indicateurs_taux_validation(
+        department: str,
+        semestre: Optional[str] = None,
+        *,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> str:
         sem = semestre or "all"
-        return f"indicateurs:{department}:taux_validation:{sem}"
+        base = f"indicateurs:{department}:taux_validation:{sem}"
+        if any([formation, modalite]):
+            f = CacheKeys._key_part(formation)
+            m = CacheKeys._key_part(modalite)
+            return f"{base}:{f}:{m}"
+        return base
     
     @staticmethod
-    def indicateurs_mentions(department: str, semestre: Optional[str] = None) -> str:
+    def indicateurs_mentions(
+        department: str,
+        semestre: Optional[str] = None,
+        *,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> str:
         sem = semestre or "all"
-        return f"indicateurs:{department}:mentions:{sem}"
+        base = f"indicateurs:{department}:mentions:{sem}"
+        if any([formation, modalite]):
+            f = CacheKeys._key_part(formation)
+            m = CacheKeys._key_part(modalite)
+            return f"{base}:{f}:{m}"
+        return base
     
     @staticmethod
-    def indicateurs_modules(department: str, semestre: Optional[str] = None, tri: Optional[str] = None) -> str:
+    def indicateurs_modules(
+        department: str,
+        semestre: Optional[str] = None,
+        tri: Optional[str] = None,
+        *,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> str:
         sem = semestre or "all"
         sort_by = tri or "taux_echec"
-        return f"indicateurs:{department}:modules:{sem}:{sort_by}"
+        base = f"indicateurs:{department}:modules:{sem}:{sort_by}"
+        if any([formation, modalite]):
+            f = CacheKeys._key_part(formation)
+            m = CacheKeys._key_part(modalite)
+            return f"{base}:{f}:{m}"
+        return base
     
     @staticmethod
-    def indicateurs_absenteisme(department: str, semestre: Optional[str] = None) -> str:
+    def indicateurs_absenteisme(
+        department: str,
+        semestre: Optional[str] = None,
+        *,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> str:
         sem = semestre or "all"
-        return f"indicateurs:{department}:absenteisme:{sem}"
+        base = f"indicateurs:{department}:absenteisme:{sem}"
+        if any([formation, modalite]):
+            f = CacheKeys._key_part(formation)
+            m = CacheKeys._key_part(modalite)
+            return f"{base}:{f}:{m}"
+        return base
+    
+    @staticmethod
+    def indicateurs_comparaison(department: str, nb_annees: int = 5) -> str:
+        return f"indicateurs:{department}:comparaison:{nb_annees}"
+    
+    @staticmethod
+    def indicateurs_type_bac(
+        department: str,
+        semestre: Optional[str] = None,
+        *,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> str:
+        sem = semestre or "all"
+        base = f"indicateurs:{department}:type_bac:{sem}"
+        if any([formation, modalite]):
+            f = CacheKeys._key_part(formation)
+            m = CacheKeys._key_part(modalite)
+            return f"{base}:{f}:{m}"
+        return base
+    
+    @staticmethod
+    def indicateurs_boursiers(
+        department: str,
+        semestre: Optional[str] = None,
+        *,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> str:
+        sem = semestre or "all"
+        base = f"indicateurs:{department}:boursiers:{sem}"
+        if any([formation, modalite]):
+            f = CacheKeys._key_part(formation)
+            m = CacheKeys._key_part(modalite)
+            return f"{base}:{f}:{m}"
+        return base
+    
+    @staticmethod
+    def indicateurs_predictifs(
+        department: str,
+        semestre: Optional[str] = None,
+        *,
+        formation: Optional[str] = None,
+        modalite: Optional[str] = None,
+    ) -> str:
+        sem = semestre or "all"
+        base = f"indicateurs:{department}:predictifs:{sem}"
+        if any([formation, modalite]):
+            f = CacheKeys._key_part(formation)
+            m = CacheKeys._key_part(modalite)
+            return f"{base}:{f}:{m}"
+        return base
     
     @staticmethod
     def scolarite_indicators(annee: Optional[str] = None, department: Optional[str] = None) -> str:

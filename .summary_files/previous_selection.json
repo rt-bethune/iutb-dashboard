@@ -1,0 +1,32 @@
+{
+    "selected_files": [
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/alembic/env.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/alembic/script.py.mako",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/alembic/versions/20241214_0001_001_initial_initial_migration_users_and_.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/alembic/versions/20241214_0002_002_budget_recrutement_tables.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/__init__.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/adapters/__init__.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/adapters/base.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/adapters/cas.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/adapters/excel.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/adapters/parcoursup.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/__init__.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/deps.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/routes/__init__.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/routes/admin.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/routes/alertes.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/routes/auth.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/routes/budget.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/routes/budget_admin.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/routes/edt.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/routes/indicateurs.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/routes/recrutement_admin.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/routes/scolarite.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/api/routes/upload.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/config.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/database.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/main.py",
+        "/Users/lafifi/Codes/RT/Dept-Dashboard/backend/app/seeds.py"
+    ],
+    "compressed_files": []
+}

@@ -72,7 +72,7 @@ export default function AnalyseModules() {
       ]
     }
     const unique = new Set<string>()
-    modules.forEach((m) => {
+    modules.forEach((m: ModuleAnalyse) => {
       if (m.formation) unique.add(m.formation)
     })
     if (unique.size === 0) unique.add('Autre')
@@ -148,8 +148,8 @@ export default function AnalyseModules() {
   const selectedFormations = Array.isArray(filters.formation)
     ? filters.formation
     : filters.formation
-    ? [String(filters.formation)]
-    : []
+      ? [String(filters.formation)]
+      : []
   const selectedSemestres = Array.isArray(filters.semestre) ? filters.semestre : []
   const modaliteFilter = (filters.modalite as string) || ''
   const minReussite = filters.reussite ? Number(filters.reussite) : undefined
@@ -157,7 +157,7 @@ export default function AnalyseModules() {
 
   const filteredModules = useMemo(() => {
     return (modules || [])
-      .map((mod) => {
+      .map((mod: ModuleAnalyse) => {
         const semCode = mod.semestre || ''
         const moduleModalite = detectModalite(semCode || mod.nom || mod.formation)
         const tauxReussite = toPercent(
@@ -174,7 +174,7 @@ export default function AnalyseModules() {
           _effectif: effectif,
         }
       })
-      .filter((mod) => {
+      .filter((mod: any) => {
         const search = typeof filters.search === 'string' ? filters.search.toLowerCase() : ''
 
         if (search) {

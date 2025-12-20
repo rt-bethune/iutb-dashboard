@@ -147,20 +147,25 @@ async def refresh_scolarite_cache():
     """Refresh scolarité data in cache."""
     logger.info("Starting scolarité cache refresh")
     try:
+        settings = get_settings()
         # Import here to avoid circular imports
         from app.adapters.scodoc import ScoDocAdapter
         
-        adapter = ScoDocAdapter()
+        adapter = ScoDocAdapter(
+            base_url=settings.scodoc_base_url,
+            username=settings.scodoc_username,
+            password=settings.scodoc_password,
+            department=settings.scodoc_department
+        )
         
         # Fetch fresh data
-        indicators = await adapter.get_indicators()
+        indicators = await adapter.get_data()
         etudiants = await adapter.get_etudiants()
         
         # Store in cache with TTL
-        settings = get_settings()
         ttl = settings.cache_ttl_scolarite
         
-        await cache.set(CacheKeys.scolarite_indicators(), indicators, ttl)
+        await cache.set(CacheKeys.scolarite_indicators(None, settings.scodoc_department), indicators, ttl)
         
         # Store refresh timestamp
         await cache.set_raw(
@@ -182,14 +187,15 @@ async def refresh_recrutement_cache():
         
         adapter = ParcoursupAdapter()
         
-        # Fetch fresh data
-        indicators = await adapter.get_indicators()
+        # Fetch fresh data (will yield mock if no file, or empty indicators if real)
+        # For a better implementation, this should fetch from DB if needed
+        indicators = await adapter.get_data()
         
         # Store in cache with TTL
         settings = get_settings()
         ttl = settings.cache_ttl_recrutement
         
-        await cache.set(CacheKeys.recrutement_indicators(), indicators, ttl)
+        await cache.set(CacheKeys.recrutement_indicators(None, "RT"), indicators, ttl)
         
         # Store refresh timestamp
         await cache.set_raw(
@@ -212,13 +218,13 @@ async def refresh_budget_cache():
         adapter = ExcelAdapter()
         
         # Fetch fresh data
-        indicators = await adapter.get_budget_indicators()
+        indicators = await adapter.get_data()
         
         # Store in cache with TTL
         settings = get_settings()
         ttl = settings.cache_ttl_budget
         
-        await cache.set(CacheKeys.budget_indicators(), indicators, ttl)
+        await cache.set(CacheKeys.budget_indicators(None, "RT"), indicators, ttl)
         
         # Store refresh timestamp
         await cache.set_raw(
@@ -237,17 +243,27 @@ async def refresh_edt_cache():
     logger.info("Starting EDT cache refresh")
     try:
         from app.adapters.scodoc import ScoDocAdapter
+        settings = get_settings()
         
-        adapter = ScoDocAdapter()
+        adapter = ScoDocAdapter(
+            base_url=settings.scodoc_base_url,
+            username=settings.scodoc_username,
+            password=settings.scodoc_password,
+            department=settings.scodoc_department
+        )
         
         # Fetch fresh data
-        indicators = await adapter.get_edt_indicators()
-        
-        # Store in cache with TTL
-        settings = get_settings()
-        ttl = settings.cache_ttl_edt
-        
-        await cache.set(CacheKeys.edt_indicators(), indicators, ttl)
+        # Note: EDT indicators currently might not be fully implemented in adapter.get_data()
+        # but this at least calls the existing base method.
+        try:
+            indicators = await adapter.get_data()
+            
+            # Store in cache with TTL
+            ttl = settings.cache_ttl_edt
+            
+            await cache.set(CacheKeys.edt_indicators(settings.scodoc_department), indicators, ttl)
+        except Exception as e:
+            logger.warning(f"EDT indicators not available through adapter.get_data(): {e}")
         
         # Store refresh timestamp
         await cache.set_raw(

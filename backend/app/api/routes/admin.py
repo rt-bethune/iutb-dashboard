@@ -258,7 +258,7 @@ async def warmup_cache(
     departments = [department.upper()] if department else VALID_DEPARTMENTS
     results = {"departments": {}, "total_cached": 0, "errors": []}
     
-    for dept in departments:
+    async def warmup_single_dept(dept: str):
         dept_results = {"cached": 0, "failed": []}
         adapter = None
         
@@ -266,102 +266,159 @@ async def warmup_cache(
             # Get adapter for this department
             adapter = get_scodoc_adapter_for_department(dept)
             
-            # 1. Scolarité indicators via adapter.get_data()
-            try:
-                data = await adapter.get_data()
-                if data:
-                    await cache.set(CacheKeys.scolarite_indicators(None, dept), data, ttl=CacheKeys.TTL_LONG)
-                    dept_results["cached"] += 1
-                    logger.info(f"Cached scolarite indicators for {dept}")
-            except Exception as e:
-                dept_results["failed"].append({"endpoint": "scolarite/indicators", "error": str(e)})
-                logger.error(f"Failed to cache scolarite for {dept}: {e}")
+            # Sub-tasks for parallel execution
+            async def task_scolarite():
+                try:
+                    data = await adapter.get_data()
+                    if data:
+                        await cache.set(CacheKeys.scolarite_indicators(None, dept), data, ttl=CacheKeys.TTL_LONG)
+                        return 1
+                except Exception as e:
+                    dept_results["failed"].append({"endpoint": "scolarite/indicators", "error": str(e)})
+                    logger.error(f"Failed to cache scolarite for {dept}: {e}")
+                return 0
+
+            async def task_recrutement():
+                try:
+                    indicators = get_recrutement_from_db(db, dept)
+                    if indicators:
+                        await cache.set(CacheKeys.recrutement_indicators(None, dept), indicators, ttl=CacheKeys.TTL_LONG)
+                        return 1
+                except Exception as e:
+                    dept_results["failed"].append({"endpoint": "recrutement/indicators", "error": str(e)})
+                return 0
+
+            async def task_budget():
+                try:
+                    indicators = get_budget_from_db(db, dept)
+                    if indicators:
+                        await cache.set(CacheKeys.budget_indicators(None, dept), indicators, ttl=CacheKeys.TTL_LONG)
+                        return 1
+                except Exception as e:
+                    dept_results["failed"].append({"endpoint": "budget/indicators", "error": str(e)})
+                return 0
+
+            async def task_indicateurs():
+                cached_count = 0
+                try:
+                    service = IndicateursService(adapter)
+                    
+                    # Independent indicator tasks
+                    async def sub_tableau():
+                        res = await service.get_tableau_bord()
+                        if res:
+                            await cache.set(CacheKeys.indicateurs_tableau_bord(dept), res, ttl=CacheKeys.TTL_MEDIUM)
+                            await cache.set(CacheKeys.indicateurs_tableau_bord(dept, annee="2024-2025"), res, ttl=CacheKeys.TTL_MEDIUM)
+                            return 2
+                        return 0
+                    
+                    async def sub_stats():
+                        res = await service.get_statistiques_cohorte()
+                        if res:
+                            await cache.set(CacheKeys.indicateurs_statistiques(dept), res, ttl=CacheKeys.TTL_MEDIUM)
+                            return 1
+                        return 0
+                    
+                    async def sub_taux():
+                        res = await service.get_taux_validation()
+                        if res:
+                            await cache.set(CacheKeys.indicateurs_taux_validation(dept), res, ttl=CacheKeys.TTL_MEDIUM)
+                            return 1
+                        return 0
+                    
+                    async def sub_mentions():
+                        res = await service.get_mentions()
+                        if res:
+                            await cache.set(CacheKeys.indicateurs_mentions(dept), res, ttl=CacheKeys.TTL_MEDIUM)
+                            return 1
+                        return 0
+                    
+                    async def sub_modules():
+                        res = await service.get_modules_analyse()
+                        if res:
+                            await cache.set_list(CacheKeys.indicateurs_modules(dept), res, ttl=CacheKeys.TTL_MEDIUM)
+                            return 1
+                        return 0
+                    
+                    async def sub_absences():
+                        res = await service.get_analyse_absenteisme()
+                        if res:
+                            await cache.set(CacheKeys.indicateurs_absenteisme(dept), res, ttl=CacheKeys.TTL_MEDIUM)
+                            return 1
+                        return 0
+
+                    async def sub_autres():
+                        # These are mock/simple for now but good to parallelize
+                        c = 0
+                        res = await service.get_comparaison_interannuelle()
+                        if res: await cache.set(CacheKeys.indicateurs_comparaison(dept), res, ttl=CacheKeys.TTL_LONG); c += 1
+                        res = await service.get_analyse_type_bac()
+                        if res: await cache.set(CacheKeys.indicateurs_type_bac(dept), res, ttl=CacheKeys.TTL_MEDIUM); c += 1
+                        res = await service.get_analyse_boursiers()
+                        if res: await cache.set(CacheKeys.indicateurs_boursiers(dept), res, ttl=CacheKeys.TTL_MEDIUM); c += 1
+                        res = await service.get_indicateurs_predictifs()
+                        if res: await cache.set(CacheKeys.indicateurs_predictifs(dept), res, ttl=CacheKeys.TTL_MEDIUM); c += 1
+                        return c
+
+                    sub_results = await asyncio.gather(
+                        sub_tableau(), sub_stats(), sub_taux(), sub_mentions(), 
+                        sub_modules(), sub_absences(), sub_autres()
+                    )
+                    cached_count = sum(sub_results)
+                except Exception as e:
+                    dept_results["failed"].append({"endpoint": "indicateurs/*", "error": str(e)})
+                return cached_count
+
+            async def task_alertes():
+                cached_count = 0
+                try:
+                    alertes_service = AlertesService(adapter)
+                    stats_alertes = await alertes_service.get_statistiques_alertes()
+                    if stats_alertes:
+                        await cache.set_raw(CacheKeys.alertes_stats(dept), stats_alertes, ttl=CacheKeys.TTL_SHORT)
+                        cached_count += 1
+                    
+                    alertes_list = await alertes_service.get_all_alertes(limit=100)
+                    if alertes_list:
+                        await cache.set_raw(
+                            CacheKeys.alertes_list(dept),
+                            [a.model_dump(mode="json") for a in alertes_list],
+                            ttl=CacheKeys.TTL_MEDIUM
+                        )
+                        cached_count += 1
+                except Exception as e:
+                    dept_results["failed"].append({"endpoint": "alertes/*", "error": str(e)})
+                return cached_count
+
+            # Run all high-level tasks in parallel
+            task_results = await asyncio.gather(
+                task_scolarite(), task_recrutement(), task_budget(), 
+                task_indicateurs(), task_alertes()
+            )
+            dept_results["cached"] = sum(task_results)
             
-            # 2. Recrutement indicators (using route helper)
-            try:
-                indicators = get_recrutement_from_db(db, dept)
-                if indicators:
-                    await cache.set(CacheKeys.recrutement_indicators(dept), indicators, ttl=CacheKeys.TTL_LONG)
-                    dept_results["cached"] += 1
-                    logger.info(f"Cached recrutement indicators for {dept}")
-            except Exception as e:
-                dept_results["failed"].append({"endpoint": "recrutement/indicators", "error": str(e)})
-                logger.error(f"Failed to cache recrutement for {dept}: {e}")
-            
-            # 3. Budget indicators (using route helper)
-            try:
-                indicators = get_budget_from_db(db, dept)
-                if indicators:
-                    await cache.set(CacheKeys.budget_indicators(dept), indicators, ttl=CacheKeys.TTL_LONG)
-                    dept_results["cached"] += 1
-                    logger.info(f"Cached budget indicators for {dept}")
-            except Exception as e:
-                dept_results["failed"].append({"endpoint": "budget/indicators", "error": str(e)})
-                logger.error(f"Failed to cache budget for {dept}: {e}")
-            
-            # 4. Indicateurs service (tableau-bord, statistiques, etc.)
-            try:
-                service = IndicateursService(adapter)
-                
-                # Tableau de bord
-                tableau = await service.get_tableau_bord()
-                if tableau:
-                    await cache.set(CacheKeys.indicateurs_tableau_bord(dept), tableau, ttl=CacheKeys.TTL_MEDIUM)
-                    dept_results["cached"] += 1
-                
-                # Statistiques
-                stats = await service.get_statistiques_cohorte()
-                if stats:
-                    await cache.set(CacheKeys.indicateurs_statistiques(dept), stats, ttl=CacheKeys.TTL_MEDIUM)
-                    dept_results["cached"] += 1
-                
-                # Taux validation
-                taux = await service.get_taux_validation()
-                if taux:
-                    await cache.set(CacheKeys.indicateurs_taux_validation(dept), taux, ttl=CacheKeys.TTL_MEDIUM)
-                    dept_results["cached"] += 1
-                
-                # Mentions
-                mentions = await service.get_mentions()
-                if mentions:
-                    await cache.set(CacheKeys.indicateurs_mentions(dept), mentions, ttl=CacheKeys.TTL_MEDIUM)
-                    dept_results["cached"] += 1
-                
-                # Modules
-                modules = await service.get_modules_analyse()
-                if modules:
-                    await cache.set_list(CacheKeys.indicateurs_modules(dept), modules, ttl=CacheKeys.TTL_MEDIUM)
-                    dept_results["cached"] += 1
-                
-                logger.info(f"Cached indicateurs for {dept}")
-            except Exception as e:
-                dept_results["failed"].append({"endpoint": "indicateurs/*", "error": str(e)})
-                logger.error(f"Failed to cache indicateurs for {dept}: {e}")
-            
-            # 5. Alertes statistiques
-            try:
-                alertes_service = AlertesService(adapter)
-                stats = await alertes_service.get_statistiques_alertes()
-                if stats:
-                    await cache.set_raw(CacheKeys.alertes_stats(dept), stats, ttl=CacheKeys.TTL_SHORT)
-                    dept_results["cached"] += 1
-                    logger.info(f"Cached alertes stats for {dept}")
-            except Exception as e:
-                dept_results["failed"].append({"endpoint": "alertes/statistiques", "error": str(e)})
-                logger.error(f"Failed to cache alertes for {dept}: {e}")
-        
+        except Exception as e:
+            logger.error(f"Critical failure warming up {dept}: {e}")
+            dept_results["failed"].append({"endpoint": "all", "error": str(e)})
         finally:
-            # Close adapter
             if adapter and hasattr(adapter, 'close'):
                 await adapter.close()
         
+        return dept, dept_results
+
+    # Run all departments in parallel
+    import asyncio
+    all_dept_tasks = [warmup_single_dept(d) for d in departments]
+    finished_tasks = await asyncio.gather(*all_dept_tasks)
+    
+    for dept, dept_results in finished_tasks:
         results["departments"][dept] = dept_results
         results["total_cached"] += dept_results["cached"]
         if dept_results["failed"]:
             results["errors"].extend([f"{dept}: {f}" for f in dept_results["failed"]])
     
     return {
-        "message": f"Cache pré-chargé pour {len(departments)} département(s)",
+        "message": f"Cache pré-chargé pour {len(departments)} département(s) en parallèle",
         "details": results
     }
 
