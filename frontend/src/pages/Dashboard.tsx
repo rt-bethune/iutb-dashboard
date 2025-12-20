@@ -14,24 +14,31 @@ import {
   ArrowRight
 } from 'lucide-react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  AreaChart, Area
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
 } from 'recharts'
 import { Link } from 'react-router-dom'
-import StatCard from '@/components/StatCard'
 import ChartContainer from '@/components/ChartContainer'
 import ProgressBar from '@/components/ProgressBar'
-import { scolariteApi, recrutementApi, budgetApi, edtApi, alertesApi } from '@/services/api'
+import { scolariteApi, recrutementApi, budgetApi, edtApi, alertesApi, uploadApi } from '@/services/api'
 import { useDepartment } from '../contexts/DepartmentContext'
 import { useAuth } from '../contexts/AuthContext'
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
 const ALERT_COLORS = {
   critique: 'text-red-600 bg-red-50 border-red-100',
   attention: 'text-orange-600 bg-orange-50 border-orange-100',
   info: 'text-blue-600 bg-blue-50 border-blue-100',
 }
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
 export default function Dashboard() {
   const { department } = useDepartment()
@@ -71,13 +78,20 @@ export default function Dashboard() {
   const { data: edt } = useQuery({
     queryKey: ['edt', 'indicators', department],
     queryFn: () => edtApi.getIndicators(department),
-    enabled: canViewEdt,
+	  enabled: canViewEdt,
+  })
+
+  const { data: uploadFiles } = useQuery({
+    queryKey: ['upload', 'files', department],
+    queryFn: () => uploadApi.listFiles(department),
   })
 
   // Computed Indicators
-  const recruitmentFillRate = useMemo(() => {
-    if (!recrutement?.nb_places || !recrutement?.candidats_confirmes) return 0
-    return (recrutement.candidats_confirmes / recrutement.nb_places) * 100
+  const recruitmentConfirmRate = useMemo(() => {
+    const acceptes = recrutement?.candidats_acceptes ?? 0
+    const confirmes = recrutement?.candidats_confirmes ?? 0
+    if (acceptes <= 0 || confirmes <= 0) return 0
+    return (confirmes / acceptes) * 100
   }, [recrutement])
 
   const budgetBurnRate = useMemo(() => {
@@ -85,13 +99,90 @@ export default function Dashboard() {
     return (budget.total_paye / budget.budget_total) * 100
   }, [budget])
 
-  const academicHealthData = useMemo(() => [
-    { subject: 'Réussite', A: scolarite?.taux_reussite_global || 0, fullMark: 100, display: `${(scolarite?.taux_reussite_global || 0).toFixed(1)}%` },
-    { subject: 'Assiduité', A: 100 - (scolarite?.taux_absenteisme || 0), fullMark: 100, display: `${(100 - (scolarite?.taux_absenteisme || 0)).toFixed(1)}%` },
-    { subject: 'Excellence', A: (scolarite?.taux_excellence || 0.1) * 100, fullMark: 100, display: `${((scolarite?.taux_excellence || 0.1) * 100).toFixed(1)}%` },
-    { subject: 'Rétention', A: 95, fullMark: 100, display: '95%' },
-    { subject: 'Moyenne', A: (scolarite?.moyenne_generale || 10) * 5, fullMark: 100, display: `${(scolarite?.moyenne_generale || 0).toFixed(2)}/20` },
-  ], [scolarite])
+  const currentSemestresLabel = useMemo(() => {
+    const codes = (scolarite?.semestres_stats ?? []).map((s: any) => s?.code).filter(Boolean)
+    const unique = Array.from(new Set(codes))
+    return unique.length > 0 ? unique.join(' / ') : '—'
+  }, [scolarite])
+
+  const edtOccupationPct = useMemo(() => {
+    const taux = edt?.taux_occupation_moyen
+    return typeof taux === 'number' ? clamp(taux * 100, 0, 100) : 0
+  }, [edt])
+
+  const scolariteReussitePct = useMemo(() => scolarite?.taux_reussite_global ?? 0, [scolarite])
+  const scolariteAbsPct = useMemo(() => scolarite?.taux_absenteisme ?? 0, [scolarite])
+  const critiqueAlertsCount = useMemo(() => alertesStats?.par_niveau?.critique ?? 0, [alertesStats])
+  const decrochageAlertsCount = useMemo(() => alertesStats?.par_type?.decrochage ?? 0, [alertesStats])
+  const difficulteAlertsCount = useMemo(
+    () => alertesStats?.par_type?.difficulte_academique ?? 0,
+    [alertesStats]
+  )
+
+  const academicHealthData = useMemo(() => {
+    const totalEtudiants = scolarite?.total_etudiants ?? 0
+    const critRate = totalEtudiants > 0 ? (critiqueAlertsCount / totalEtudiants) * 100 : 0
+    const serenite = clamp(100 - critRate, 0, 100)
+
+    return [
+      { subject: 'Réussite', A: scolariteReussitePct, fullMark: 100, display: `${scolariteReussitePct.toFixed(1)}%` },
+      { subject: 'Assiduité', A: clamp(100 - scolariteAbsPct, 0, 100), fullMark: 100, display: `${(100 - scolariteAbsPct).toFixed(1)}%` },
+      { subject: 'Sérénité', A: serenite, fullMark: 100, display: `${critiqueAlertsCount} critiques` },
+      { subject: 'Moyenne', A: clamp((scolarite?.moyenne_generale ?? 0) * 5, 0, 100), fullMark: 100, display: `${(scolarite?.moyenne_generale ?? 0).toFixed(2)}/20` },
+    ]
+  }, [critiqueAlertsCount, scolarite, scolariteAbsPct, scolariteReussitePct])
+
+  const focus = useMemo(() => {
+    const parType = alertesStats?.par_type ?? {}
+    const entries = Object.entries(parType)
+      .filter(([, count]) => typeof count === 'number' && count > 0)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+    const [type, count] = entries[0] ?? []
+    if (!type) return null
+
+    const labels: Record<string, string> = {
+      difficulte_academique: "difficultés académiques",
+      assiduite: "assiduité",
+      decrochage: "risque de décrochage",
+      progression_negative: "progression négative",
+      retard_travaux: "retards de travaux",
+      absence_evaluation: "absences aux évaluations",
+    }
+
+    return { type, label: labels[type] || type, count: count as number }
+  }, [alertesStats])
+
+  const recentImports = useMemo(() => {
+    const files = (uploadFiles?.files ?? []) as Array<{ filename: string; type: string; modified: string }>
+    const formatDate = (iso: string) => {
+      const d = new Date(iso)
+      if (Number.isNaN(d.getTime())) return ''
+      return d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+    }
+    const displayName = (filename: string) => filename.replace(/^\d{8}_\d{6}_/, '')
+
+    const iconForType = (type: string) => {
+      if (type === 'budget') return <Wallet className="h-4 w-4" />
+      if (type === 'edt') return <Calendar className="h-4 w-4" />
+      if (type === 'parcoursup') return <Users className="h-4 w-4" />
+      if (type === 'notes') return <GraduationCap className="h-4 w-4" />
+      if (type === 'etudiants') return <Users className="h-4 w-4" />
+      return <CheckCircle2 className="h-4 w-4" />
+    }
+
+    const colorForType = (type: string): 'orange' | 'blue' | 'red' => {
+      if (type === 'budget') return 'red'
+      if (type === 'edt') return 'orange'
+      return 'blue'
+    }
+
+    return files.slice(0, 3).map((f) => ({
+      icon: iconForType(f.type),
+      title: `${f.type}: ${displayName(f.filename)}`,
+      date: formatDate(f.modified),
+      color: colorForType(f.type),
+    }))
+  }, [uploadFiles])
 
   return (
     <div className="space-y-6">
@@ -102,7 +193,7 @@ export default function Dashboard() {
           <p className="text-gray-500 mt-1">État de santé et alertes en temps réel</p>
         </div>
         <div className="text-sm text-gray-500 font-medium bg-white px-3 py-1 rounded-full border border-gray-100 shadow-sm">
-          Semestre actuel: <span className="text-blue-600">S1 / S3 / S5</span>
+          Semestres courants: <span className="text-blue-600">{currentSemestresLabel}</span>
         </div>
       </div>
 
@@ -110,17 +201,17 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <HealthCard
           title="Scolarité"
-          value={scolarite?.taux_reussite_global.toFixed(1) + '%'}
+          value={`${scolariteReussitePct.toFixed(1)}%`}
           label="Taux de réussite"
-          color={scolarite?.taux_reussite_global > 75 ? 'green' : 'yellow'}
+          color={scolariteReussitePct > 75 ? 'green' : 'yellow'}
           icon={<GraduationCap className="h-5 w-5" />}
           path="/scolarite"
         />
         <HealthCard
           title="Recrutement"
-          value={recruitmentFillRate.toFixed(0) + '%'}
-          label="Taux de remplissage"
-          color={recruitmentFillRate > 90 ? 'green' : recruitmentFillRate > 70 ? 'blue' : 'orange'}
+          value={`${recruitmentConfirmRate.toFixed(0)}%`}
+          label="Taux de confirmation"
+          color={recruitmentConfirmRate > 90 ? 'green' : recruitmentConfirmRate > 70 ? 'blue' : 'orange'}
           icon={<Users className="h-5 w-5" />}
           path="/recrutement"
         />
@@ -134,7 +225,7 @@ export default function Dashboard() {
         />
         <HealthCard
           title="EDT / RH"
-          value={(edt?.taux_occupation || 85).toFixed(0) + '%'}
+          value={`${edtOccupationPct.toFixed(0)}%`}
           label="Charge salles/enseignants"
           color="blue"
           icon={<Calendar className="h-5 w-5" />}
@@ -177,21 +268,25 @@ export default function Dashboard() {
             </div>
 
             <div className="px-4 pb-4">
-              {/* Quick Alert List (Mock or real if available) */}
+              {/* Quick Alert List */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between p-3 rounded-lg border border-red-100 bg-red-50/30">
                   <div className="flex items-center gap-3">
                     <div className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] animate-pulse" />
-                    <span className="text-sm font-semibold text-gray-900">8 Étudiants en situation critique (décrochage)</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {decrochageAlertsCount} alertes de décrochage
+                    </span>
                   </div>
-                  <Link to="/alertes?niveau=critique" className="text-xs text-red-600 font-bold hover:underline">Intervenir</Link>
+                  <Link to="/alertes?type_alerte=decrochage" className="text-xs text-red-600 font-bold hover:underline">Intervenir</Link>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg border border-orange-100 bg-orange-50/30">
                   <div className="flex items-center gap-3">
                     <div className="h-2 w-2 rounded-full bg-orange-500" />
-                    <span className="text-sm font-medium text-gray-800">12 Moyennes {'<'} 8/20 en S1 (Réseaux Locaux)</span>
+                    <span className="text-sm font-medium text-gray-800">
+                      {difficulteAlertsCount} alertes de difficulté académique (moyenne {'<'} 8)
+                    </span>
                   </div>
-                  <Link to="/scolarite?active=indicators" className="text-xs text-orange-600 font-bold hover:underline">Analyser</Link>
+                  <Link to="/alertes?type_alerte=difficulte_academique" className="text-xs text-orange-600 font-bold hover:underline">Analyser</Link>
                 </div>
               </div>
             </div>
@@ -221,8 +316,8 @@ export default function Dashboard() {
                 <PieChart>
                   <Pie
                     data={[
-                      { name: 'Inscrits', value: recrutement?.candidats_confirmes || 0 },
-                      { name: 'Places libres', value: Math.max(0, (recrutement?.nb_places || 100) - (recrutement?.candidats_confirmes || 0)) }
+                      { name: 'Confirmés', value: recrutement?.candidats_confirmes || 0 },
+                      { name: 'Acceptés non confirmés', value: Math.max(0, (recrutement?.candidats_acceptes || 0) - (recrutement?.candidats_confirmes || 0)) }
                     ]}
                     cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value"
                   >
@@ -231,12 +326,12 @@ export default function Dashboard() {
                   </Pie>
                   <Tooltip />
                   <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="text-xl font-bold fill-gray-900">
-                    {recruitmentFillRate.toFixed(0)}%
+                    {recruitmentConfirmRate.toFixed(0)}%
                   </text>
                 </PieChart>
               </ResponsiveContainer>
               <div className="mt-2 text-center text-sm font-medium text-gray-500">
-                {recrutement?.candidats_confirmes} / {recrutement?.nb_places} places occupées
+                {recrutement?.candidats_confirmes || 0} / {recrutement?.candidats_acceptes || 0} confirmations
               </div>
             </ChartContainer>
           </div>
@@ -269,12 +364,28 @@ export default function Dashboard() {
           </div>
 
           <div className="card">
-            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Prochaines Échéances</h3>
+            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Derniers imports</h3>
             <div className="space-y-3">
-              <TimelineItem icon={<Clock className="h-4 w-4" />} title="Saisie des notes S1" date="J-5" color="orange" />
-              <TimelineItem icon={<CheckCircle2 className="h-4 w-4" />} title="Conseil de département" date="22 Déc" color="blue" />
-              <TimelineItem icon={<Wallet className="h-4 w-4" />} title="Clôture commandes" date="31 Déc" color="red" />
+              {recentImports.length > 0 ? (
+                recentImports.map((item, idx) => (
+                  <TimelineItem
+                    key={`${item.title}-${idx}`}
+                    icon={item.icon}
+                    title={item.title}
+                    date={item.date}
+                    color={item.color}
+                  />
+                ))
+              ) : (
+                <div className="text-xs text-gray-500 flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Aucun fichier importé
+                </div>
+              )}
             </div>
+            <Link to="/upload" className="mt-4 block text-center text-xs font-bold text-gray-400 hover:text-blue-600 transition-colors">
+              Gérer les imports
+            </Link>
           </div>
 
           <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-xl p-5 text-white shadow-lg shadow-blue-200">
@@ -282,9 +393,12 @@ export default function Dashboard() {
               <TrendingUp className="h-5 w-5" />
               Tendance Globale
             </h3>
-            <p className="text-indigo-100 text-sm mb-4">Le département maintient une dynamique positive avec une hausse de 3% de la réussite vs N-1.</p>
+            <p className="text-indigo-100 text-sm mb-4">
+              Réussite: {scolariteReussitePct.toFixed(1)}% · Absentéisme: {scolariteAbsPct.toFixed(1)}% · Alertes critiques: {critiqueAlertsCount}
+            </p>
             <div className="bg-white/10 rounded-lg p-3 text-sm">
-              <span className="font-bold text-white">Focus:</span> Suivi renforcé des S1 FA (absentéisme en hausse).
+              <span className="font-bold text-white">Focus:</span>{' '}
+              {focus ? `${focus.label} (${focus.count})` : 'Aucune alerte détectée'}
             </div>
           </div>
         </div>
