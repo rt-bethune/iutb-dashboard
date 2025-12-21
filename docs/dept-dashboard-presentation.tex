@@ -1,0 +1,445 @@
+% Dept-Dashboard — Beamer presentation
+% Build (from repo root):
+%   pdflatex -interaction=nonstopmode -halt-on-error -output-directory docs docs/dept-dashboard-presentation.tex
+%   pdflatex -interaction=nonstopmode -halt-on-error -output-directory docs docs/dept-dashboard-presentation.tex
+% Build (from docs/):
+%   cd docs && pdflatex -interaction=nonstopmode -halt-on-error dept-dashboard-presentation.tex
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{Madrid}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{caption}[numbered]
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+
+% Make screenshots work whether compiled from repo root or from docs/
+\graphicspath{{../screenshots/}{screenshots/}}
+
+\definecolor{DDPrimary}{HTML}{0B5394}
+\definecolor{DDAccent}{HTML}{009688}
+\definecolor{DDLight}{HTML}{F2F5F9}
+
+\setbeamercolor{structure}{fg=DDPrimary}
+\setbeamercolor{title}{fg=DDPrimary}
+\setbeamercolor{subtitle}{fg=DDAccent}
+\setbeamercolor{frametitle}{bg=DDPrimary, fg=white}
+\setbeamercolor{block title}{bg=DDLight, fg=DDPrimary}
+\setbeamercolor{block body}{bg=white, fg=black}
+\setbeamercolor{author in head/foot}{bg=DDLight, fg=DDPrimary}
+\setbeamercolor{date in head/foot}{bg=DDLight, fg=DDPrimary}
+
+\setbeamerfont{title}{size=\LARGE, series=\bfseries}
+\setbeamerfont{frametitle}{size=\large, series=\bfseries}
+\setbeamerfont{block title}{series=\bfseries}
+
+\setbeamersize{text margin left=8mm, text margin right=8mm}
+\setbeamertemplate{blocks}[rounded][shadow=false]
+\setbeamertemplate{headline}{}
+\setbeamertemplate{itemize item}{\color{DDAccent}$\blacktriangleright$}
+\setbeamertemplate{itemize subitem}{\color{DDAccent}\scriptsize$\blacktriangleright$}
+
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=.78\paperwidth,ht=2.7ex,dp=1.2ex,left]{author in head/foot}%
+      \hspace{0.8em}\usebeamerfont{author in head/foot}\insertshorttitle%
+      \hspace{1.0em}{\color{DDAccent}\textbar}\hspace{1.0em}\insertsectionhead%
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.22\paperwidth,ht=2.7ex,dp=1.2ex,right]{date in head/foot}%
+      \usebeamerfont{date in head/foot}\insertframenumber/\inserttotalframenumber\hspace{0.8em}%
+    \end{beamercolorbox}%
+  }%
+  \vskip0pt%
+}
+
+\setbeamertemplate{section page}{%
+  \vspace{2.0cm}
+  \begin{center}
+    {\usebeamerfont{title}\color{DDPrimary}\insertsectionhead\par}
+    \vspace{0.6em}
+    {\color{DDAccent}\rule{0.62\linewidth}{0.7pt}}
+  \end{center}
+}
+
+\AtBeginSection{
+  \begin{frame}[plain]
+    \sectionpage
+  \end{frame}
+}
+
+\title[Dept-Dashboard]{Dept-Dashboard}
+\subtitle{Tableau de bord modulaire pour départements d'enseignement (IUT)}
+\author{}
+\institute{}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}[plain]
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+      \vspace{0.6cm}
+      {\usebeamerfont{title}\color{DDPrimary}\inserttitle\par}
+      \vspace{0.3em}
+      {\usebeamerfont{subtitle}\color{DDAccent}\insertsubtitle\par}
+      \vspace{1.0em}
+      \small
+      \begin{itemize}
+        \item KPIs scolarité, recrutement, budget, EDT.
+        \item Alertes réussite \& fiche étudiant.
+        \item Multi-départements, permissions, cache Redis.
+      \end{itemize}
+      \vfill
+      \footnotesize \insertdate
+    \column{0.45\textwidth}
+      \vspace{0.2cm}
+      \includegraphics[width=\textwidth]{main.png}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Plan}
+  \tableofcontents[hideallsubsections]
+\end{frame}
+
+\section{Vision \& périmètre}
+
+\begin{frame}{Contexte \& objectifs}
+  \begin{itemize}
+    \item Centraliser plusieurs sources (ScoDoc, Parcoursup, fichiers Excel/CSV).
+    \item Visualiser des indicateurs clés (KPIs) : scolarité, recrutement, budget, EDT/maquettes.
+    \item Sécuriser l'accès (CAS + JWT) et gérer des droits par département.
+    \item Accélérer l'accès à l'information (cache Redis + rafraîchissement contrôlé).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Fonctionnalités principales}
+  \small
+  \begin{tabularx}{\textwidth}{@{}lX@{}}
+    \toprule
+    \textbf{Module} & \textbf{Ce que l'on suit} \\
+    \midrule
+    Scolarité & Effectifs, résultats, progression, assiduité (si disponible) \\
+    Réussite / Alertes & Détection d'étudiants en difficulté, absentéisme, risque de décrochage \\
+    Recrutement & Statistiques Parcoursup, profils candidats, suivi de campagne \\
+    Budget & Suivi des dépenses, répartition par catégories, alertes de seuil \\
+    EDT \& Maquettes & Charges enseignantes, occupation salles, répartition CM/TD/TP \\
+    Administration & Utilisateurs, permissions granulaires multi-départements \\
+    \bottomrule
+  \end{tabularx}
+\end{frame}
+
+\section{Parcours utilisateur}
+
+\begin{frame}{Connexion (CAS / mode dev)}
+  \begin{columns}[T]
+    \column{0.52\textwidth}
+      \begin{block}{Points clés}
+        \begin{itemize}
+          \item En production : authentification via CAS.
+          \item En développement : mode mock (connexion rapide).
+          \item Après connexion : accès filtré selon permissions.
+        \end{itemize}
+      \end{block}
+    \column{0.48\textwidth}
+      \includegraphics[width=\textwidth]{login.png}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Tableau de bord (vue d'ensemble)}
+  \begin{columns}[T]
+    \column{0.62\textwidth}
+      \includegraphics[width=\textwidth]{home.png}
+    \column{0.38\textwidth}
+      \begin{block}{À retenir}
+        \small
+        \begin{itemize}
+          \item Synthèse par domaine.
+          \item Filtres (département, période/année selon module).
+          \item Exports pour le pilotage.
+        \end{itemize}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\section{Modules métier}
+
+\subsection{Scolarité}
+\begin{frame}{Module Scolarité}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{Exemples d'indicateurs}
+        \begin{itemize}
+          \item Effectifs par promotion (BUT1 / BUT2 / BUT3).
+          \item Taux de réussite et distributions de notes.
+          \item Suivi de progression (par semestre / UE / module).
+        \end{itemize}
+      \end{block}
+      \begin{block}{Sources}
+        \begin{itemize}
+          \item API ScoDoc (notes, bulletins, jurys, absences).
+        \end{itemize}
+      \end{block}
+    \column{0.46\textwidth}
+      \includegraphics[width=\textwidth]{scolarite.png}
+  \end{columns}
+\end{frame}
+
+\subsection{Réussite \& alertes}
+
+\begin{frame}{KPIs de cohorte (exemples de clés)}
+  \small
+  \begin{tabularx}{\textwidth}{@{}lX@{}}
+    \toprule
+    \textbf{Clé} & \textbf{Interprétation} \\
+    \midrule
+    \texttt{effectif\_total} & Nombre total d'étudiants de la cohorte \\
+    \texttt{moyenne\_promo} & Moyenne générale de la promotion \\
+    \texttt{ecart\_type} / \texttt{mediane} & Dispersion / valeur centrale \\
+    \texttt{taux\_reussite} & \% avec moyenne $\ge 10$ \\
+    \texttt{taux\_difficulte} & \% avec moyenne $< 8$ \\
+    \texttt{taux\_excellence} & \% avec moyenne $\ge 16$ \\
+    \bottomrule
+  \end{tabularx}
+  \vspace{0.6em}
+  \footnotesize
+  Détails complets : \texttt{docs/INDICATEURS.md}.
+\end{frame}
+
+\begin{frame}{Alertes individuelles (types \& seuils par défaut)}
+  \footnotesize
+  \begin{tabularx}{\textwidth}{@{}lXl@{}}
+    \toprule
+    \textbf{Type} & \textbf{Description} & \textbf{Seuil} \\
+    \midrule
+    \texttt{difficulte\_academique} & Moyenne générale basse & $< 8/20$ \\
+    \texttt{assiduite} & Taux d'absences non justifiées élevé & $> 15\%$ \\
+    \texttt{decrochage} & Score de risque de décrochage & $> 0{,}7$ \\
+    \texttt{progression\_negative} & Chute vs semestre précédent & $> -2$ pts \\
+    \texttt{retard\_travaux} & Travaux non rendus & $> 3$ \\
+    \texttt{absence\_evaluation} & Absences aux évaluations & $> 2$ \\
+    \bottomrule
+  \end{tabularx}
+  \vspace{0.6em}
+  \small
+  \begin{itemize}
+    \item Les seuils sont configurables par département (API \texttt{/api/\{dept\}/alertes/config}).
+    \item La fiche étudiant consolide notes, absences, progression et risques.
+  \end{itemize}
+\end{frame}
+
+\subsection{Recrutement}
+\begin{frame}{Module Recrutement (Parcoursup / eCandidat)}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{Objectifs}
+        \begin{itemize}
+          \item Suivre une campagne (v\oe ux, confirmations, admissions).
+          \item Analyser l'origine des candidats (type de bac, lycée, département).
+          \item Produire des stats synthétiques et exportables.
+        \end{itemize}
+      \end{block}
+      \begin{block}{Import}
+        \begin{itemize}
+          \item CSV (UTF-8, séparateur \texttt{;}) via module Upload.
+        \end{itemize}
+      \end{block}
+    \column{0.46\textwidth}
+      \includegraphics[width=\textwidth]{recrutement.png}
+  \end{columns}
+\end{frame}
+
+\subsection{Budget}
+\begin{frame}{Module Budget}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{Ce que l'on suit}
+        \begin{itemize}
+          \item Budget annuel, lignes budgétaires, dépenses.
+          \item Répartition par catégories (fonctionnement / investissement, etc.).
+          \item Alertes sur seuils et consommation.
+        \end{itemize}
+      \end{block}
+      \begin{block}{Administration}
+        \begin{itemize}
+          \item CRUD + imports dédiés (pages Admin Budget).
+        \end{itemize}
+      \end{block}
+    \column{0.46\textwidth}
+      \includegraphics[width=\textwidth]{budget.png}
+  \end{columns}
+\end{frame}
+
+\subsection{EDT \& maquettes}
+\begin{frame}{Module EDT \& Maquettes}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{Indicateurs}
+        \begin{itemize}
+          \item Charge horaire par enseignant.
+          \item Taux d'occupation des salles.
+          \item Répartition CM/TD/TP et cohérence avec maquette.
+        \end{itemize}
+      \end{block}
+    \column{0.46\textwidth}
+      \includegraphics[width=\textwidth]{edt.png}
+  \end{columns}
+\end{frame}
+
+\section{Architecture \& clés techniques}
+
+\begin{frame}{Architecture (vue simplifiée)}
+  \begin{block}{Chaîne de traitement}
+    \centering
+    \textbf{React/Vite} \ $\rightarrow$ \ \textbf{API FastAPI} \ $\rightarrow$ \ \textbf{Adapters} \ $\rightarrow$ \ \textbf{Sources} \\
+    \vspace{0.3em}
+    \textbf{API FastAPI} \ $\leftrightarrow$ \ \textbf{PostgreSQL/SQLite} \quad et \quad \textbf{Redis (cache)}
+  \end{block}
+  \begin{itemize}
+    \item Routes scindées par département : \texttt{/api/\{department\}/...}
+    \item Adapters : encapsulent ScoDoc, Parcoursup, Excel/CSV (pandas).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Backend : points clés}
+  \begin{itemize}
+    \item FastAPI + Pydantic v2, routes par domaine (\texttt{app/api/routes/}).
+    \item Modèles SQLAlchemy + migrations Alembic.
+    \item Cache Redis avec TTL par domaine et option \texttt{?refresh=true}.
+    \item Jobs planifiés (APScheduler) pour pré-charger/rafraîchir des données.
+  \end{itemize}
+  \vspace{0.5em}
+  \small
+  Références : \texttt{AGENTS.md}, \texttt{DOCUMENTATION.md}.
+\end{frame}
+
+\begin{frame}{Frontend : points clés}
+  \begin{itemize}
+    \item React 18 + TypeScript + Vite.
+    \item Tailwind CSS + Recharts pour la dataviz.
+    \item Data fetching via TanStack Query (cache côté client, refetch, staleTime).
+    \item Pages métier : \texttt{frontend/src/pages/} ; composants réutilisables : \texttt{frontend/src/components/}.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Sécurité : authentification \& permissions}
+  \begin{columns}[T]
+    \column{0.56\textwidth}
+      \begin{itemize}
+        \item CAS (production) ou mock (dev) \(\rightarrow\) JWT pour les requêtes API.
+        \item Permissions par département : voir / modifier par domaine + droits d'import/export.
+        \item Rôle \textit{admin département} : tous droits sur le département.
+      \end{itemize}
+      \vspace{0.4em}
+      \footnotesize
+      Écrans : \texttt{admin\_users.png}, \texttt{admin\_permissions.png}.
+    \column{0.44\textwidth}
+      \includegraphics[height=0.34\textheight]{admin_users.png}
+      \vspace{0.4em}
+      \includegraphics[height=0.34\textheight]{admin_permissions.png}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Clés de configuration (.env)}
+  \small
+  \begin{block}{Variables principales}
+\begin{verbatim}
+DEBUG=true|false
+SECRET_KEY=... (>= 32 chars en prod)
+DATABASE_URL=... (sinon SQLite)
+REDIS_URL=redis://...
+CAS_USE_MOCK=true|false
+CAS_SERVER_URL=...
+CAS_SERVICE_URL=...
+FRONTEND_URL=...
+SCODOC_BASE_URL=...
+SCODOC_USERNAME=...
+SCODOC_PASSWORD=...
+SCODOC_DEPARTMENT=...
+\end{verbatim}
+  \end{block}
+  \footnotesize
+  Modèle : \texttt{.env.prod.example}.
+\end{frame}
+
+\begin{frame}[fragile]{Clés API (exemples d'endpoints)}
+  \small
+  \begin{block}{Endpoints (extraits)}
+\begin{verbatim}
+GET /api/{dept}/scolarite/indicators
+GET /api/{dept}/alertes/
+GET /api/{dept}/alertes/etudiant/{id}
+GET /api/{dept}/indicateurs/tableau-bord
+GET /api/{dept}/recrutement/...
+GET /api/{dept}/budget/...
+\end{verbatim}
+  \end{block}
+  \footnotesize
+  Détails et structures : \texttt{docs/INDICATEURS.md}, \texttt{docs/SCODOC\_API.md}.
+\end{frame}
+
+\section{Exploitation}
+
+\begin{frame}[fragile]{Déploiement (aperçu)}
+  \begin{itemize}
+    \item Dev : API + Front séparés (Vite + Uvicorn), Redis local.
+    \item Prod : stack Docker (Nginx + Front + API + DB + Redis).
+  \end{itemize}
+  \vspace{0.5em}
+  \begin{block}{Commandes usuelles}
+\begin{verbatim}
+# Dev
+docker compose up -d redis
+cd backend && alembic upgrade head
+cd backend && uvicorn app.main:app --reload --port 8000 \
+  --app-dir backend
+cd frontend && npm run dev
+\end{verbatim}
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Tests (backend)}
+  \begin{block}{pytest}
+\begin{verbatim}
+cd backend
+pytest -v
+\end{verbatim}
+  \end{block}
+  \small
+  \begin{itemize}
+    \item Les routes métiers attendent un JWT + permissions.
+    \item En tests, utiliser le login dev/mocks ou override des dépendances.
+  \end{itemize}
+\end{frame}
+
+\section{Roadmap}
+
+\begin{frame}{Prochaines étapes}
+  \begin{itemize}
+    \item Valider la connexion ScoDoc sur données réelles (perf, erreurs réseau).
+    \item Durcir la production : secrets, HTTPS, monitoring, logs.
+    \item Renforcer le suivi des jobs et du cache (alerting, observabilité).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Ressources}
+  \begin{itemize}
+    \item \texttt{README.md} (démarrage rapide, variables d'environnement)
+    \item \texttt{DOCUMENTATION.md} (walkthrough avec captures)
+    \item \texttt{docs/INDICATEURS.md} (KPIs réussite/alertes, endpoints)
+    \item \texttt{docs/SCODOC\_API.md} (référence API ScoDoc 9)
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \centering
+  \Huge Questions ?
+\end{frame}
+
+\end{document}
