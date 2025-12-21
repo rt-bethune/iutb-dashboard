@@ -23,6 +23,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
   Legend,
   RadarChart,
   PolarGrid,
@@ -210,6 +211,14 @@ export default function FicheEtudiantPage() {
       }))
     : []
 
+  const getNoteFill = (note: number | null | undefined): string => {
+    if (note === null || note === undefined || Number.isNaN(note)) return '#9ca3af'
+    if (note > 18) return '#7c3aed' // violet
+    if (note > 10) return '#22c55e' // green
+    if (note >= 8) return '#f97316' // orange (8..10)
+    return '#ef4444' // red
+  }
+
   return (
     <div className="space-y-6">
       {/* Header with student info */}
@@ -388,7 +397,11 @@ export default function FicheEtudiantPage() {
               <YAxis domain={[0, 20]} />
               <Tooltip />
               <Legend />
-              <Bar dataKey="note" name="Note" fill="#3b82f6" />
+              <Bar dataKey="note" name="Note">
+                {notesChartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={getNoteFill(entry.note)} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartContainer>
@@ -401,14 +414,14 @@ export default function FicheEtudiantPage() {
             <h2 className="text-lg font-semibold mb-4">Statistiques d'absences</h2>
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center p-4 bg-gray-50 rounded">
-                <p className="text-2xl font-bold">{statistiques_absences.total_absences}</p>
+                <p className="text-2xl font-bold">{statistiques_absences.total_absences}h</p>
                 <p className="text-sm text-gray-500">Total absences</p>
               </div>
               <div className="text-center p-4 bg-gray-50 rounded">
                 <p className="text-2xl font-bold text-orange-600">
                   {(statistiques_absences.taux_absenteisme * 100).toFixed(1)}%
                 </p>
-                <p className="text-sm text-gray-500">Taux absentéisme</p>
+                <p className="text-sm text-gray-500">Taux absentéisme (/400h)</p>
               </div>
               <div className="text-center p-4 bg-green-50 rounded">
                 <p className="text-2xl font-bold text-green-600">
@@ -418,7 +431,7 @@ export default function FicheEtudiantPage() {
               </div>
               <div className="text-center p-4 bg-red-50 rounded">
                 <p className="text-2xl font-bold text-red-600">
-                  {statistiques_absences.absences_non_justifiees}
+                  {statistiques_absences.absences_non_justifiees}h
                 </p>
                 <p className="text-sm text-gray-500">Non justifiées</p>
               </div>

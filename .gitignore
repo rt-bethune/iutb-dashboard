@@ -44,3 +44,4 @@ yarn-error.log*
 
 nginx/ssl/**
 backend/data/**
+.github/agents/**
