@@ -78,20 +78,13 @@ class AlertesService:
         """Get all semesters the student has been enrolled in."""
         if not await self.adapter.authenticate():
             return []
-        
-        result = await self.adapter._api_get(
-            f"/api/etudiant/etudid/{etudiant_id}/formsemestres"
-        )
-        return result if result else []
+        return await self.adapter.get_formsemestres_etudiant(etudiant_id)
     
     async def get_etudiant_bulletin(self, etudiant_id: str, formsemestre_id: int) -> Optional[dict]:
         """Get student's grade bulletin for a semester."""
         if not await self.adapter.authenticate():
             return None
-        
-        return await self.adapter._api_get(
-            f"/api/etudiant/etudid/{etudiant_id}/formsemestre/{formsemestre_id}/bulletin"
-        )
+        return await self.adapter.get_bulletin_etudiant(etudiant_id, formsemestre_id)
     
     async def get_etudiant_absences(self, etudiant_id: str) -> Optional[dict]:
         """Get student's absence counts by fetching the assiduités list and filtering.

@@ -4,6 +4,7 @@ import httpx
 from typing import Any, Optional
 from datetime import datetime, timedelta
 import logging
+import re
 
 from app.adapters.base import BaseAdapter
 from app.models.scolarite import (
@@ -16,6 +17,8 @@ from app.models.scolarite import (
 )
 
 logger = logging.getLogger(__name__)
+
+
 
 
 class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
@@ -42,7 +45,8 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         password: Optional[str] = None,
         department: Optional[str] = None,
     ):
-        self.base_url = base_url.rstrip('/') if base_url else None
+        # Keep a trailing slash so relative endpoint joins preserve base_url path (e.g. /ScoDoc/ + api/...).
+        self.base_url = (base_url.rstrip("/") + "/") if base_url else None
         self.username = username
         self.password = password
         self.department = department
@@ -50,6 +54,19 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         self.token_expiry: Optional[datetime] = None
         self.client: Optional[httpx.AsyncClient] = None
         self._cache: dict[str, Any] = {}
+        self._use_absolute_api_paths: Optional[bool] = None
+
+    @staticmethod
+    def _normalize_endpoint(endpoint: str) -> str:
+        """Normalize endpoint for httpx base_url resolution (avoid leading '/')."""
+        return endpoint.lstrip("/")
+
+    def _resolve_endpoint(self, endpoint: str) -> str:
+        """Resolve endpoint based on detected ScoDoc deployment (root vs subpath)."""
+        normalized = self._normalize_endpoint(endpoint)
+        if self._use_absolute_api_paths:
+            return f"/{normalized}"
+        return normalized
     
     @property
     def source_name(self) -> str:
@@ -83,10 +100,15 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         
         try:
             logger.info(f"Authenticating to ScoDoc at {self.base_url}")
-            response = await self.client.post(
-                "/api/tokens",
-                auth=(self.username, self.password),
-            )
+            # Try relative first (base_url path + api/...), then absolute (/api/...) if needed.
+            token_endpoint = self._normalize_endpoint("/api/tokens")
+            response = await self.client.post(token_endpoint, auth=(self.username, self.password))
+            if response.status_code == 404 and self._use_absolute_api_paths is None:
+                response = await self.client.post(f"/{token_endpoint}", auth=(self.username, self.password))
+                if response.status_code != 404:
+                    self._use_absolute_api_paths = True
+            if self._use_absolute_api_paths is None:
+                self._use_absolute_api_paths = False
             response.raise_for_status()
             
             data = response.json()
@@ -106,27 +128,40 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
             logger.error(f"ScoDoc connection error: {e}")
             return False
     
-    async def _api_get(self, endpoint: str, params: dict = None) -> Optional[Any]:
+    async def _api_get(self, endpoint: str, params: dict = None, *, tolerate_404: bool = False) -> Optional[Any]:
         """Make authenticated GET request to ScoDoc API."""
         if not await self.authenticate():
             return None
         
+        resolved_endpoint = self._resolve_endpoint(endpoint)
+        
         # Check instance cache (simple memoization for warmup sessions)
-        cache_key = f"{endpoint}:{str(params)}"
+        cache_key = f"{resolved_endpoint}:{str(params)}"
         if cache_key in self._cache:
             return self._cache[cache_key]
         
         try:
-            response = await self.client.get(endpoint, params=params)
+            response = await self.client.get(resolved_endpoint, params=params)
+            if response.status_code == 404 and self._use_absolute_api_paths is None:
+                alt = f"/{self._normalize_endpoint(endpoint)}"
+                response = await self.client.get(alt, params=params)
+                if response.status_code != 404:
+                    self._use_absolute_api_paths = True
+                    resolved_endpoint = alt
+                else:
+                    self._use_absolute_api_paths = False
             response.raise_for_status()
             data = response.json()
             self._cache[cache_key] = data
             return data
         except httpx.HTTPStatusError as e:
-            logger.error(f"ScoDoc API error {endpoint}: {e.response.status_code}")
+            if e.response.status_code == 404 and tolerate_404:
+                logger.debug(f"ScoDoc API endpoint not found (404): {resolved_endpoint}")
+                return None
+            logger.error(f"ScoDoc API error {resolved_endpoint}: {e.response.status_code}")
             return None
         except httpx.HTTPError as e:
-            logger.error(f"ScoDoc request error {endpoint}: {e}")
+            logger.error(f"ScoDoc request error {resolved_endpoint}: {e}")
             return None
     
     async def get_department_info(self) -> Optional[dict]:
@@ -191,6 +226,22 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         """Get results/grades for a semester."""
         return await self._api_get(f"/api/formsemestre/{formsemestre_id}/resultats")
     
+    async def get_formsemestre_resultats_list(self, formsemestre_id: int) -> list[dict]:
+        """Get results/grades for a semester as a list.
+        
+        This is the MOST EFFICIENT way to get all students' UE averages for a semester.
+        Returns a list of dicts with: etudid, groups, etat, moy_gen, moy_ue_*, moy_res_*, etc.
+        """
+        result = await self._api_get(f"/api/formsemestre/{formsemestre_id}/resultats")
+        if result is None:
+            return []
+        if isinstance(result, list):
+            return result
+        # Some ScoDoc versions return dict with etudid as key
+        if isinstance(result, dict):
+            return list(result.values())
+        return []
+
     async def get_formsemestre_programme(self, formsemestre_id: int) -> Optional[dict]:
         """Get program (UEs, modules) for a semester."""
         return await self._api_get(f"/api/formsemestre/{formsemestre_id}/programme")
@@ -208,8 +259,10 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         from datetime import datetime
         
         # Fetch the detailed list instead of using /count (which ignores etat filter)
+        # Use tolerate_404=True because some semesters may not have assiduites data
         assiduites_list = await self._api_get(
-            f"/api/assiduites/formsemestre/{formsemestre_id}"
+            f"/api/assiduites/formsemestre/{formsemestre_id}",
+            tolerate_404=True
         )
         
         if not assiduites_list or not isinstance(assiduites_list, list):
@@ -250,15 +303,140 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
             "heure_non_just": round(hours_non_just, 1),
         }
     
-    async def get_formsemestre_etudiants(self, formsemestre_id: int) -> list[dict]:
-        """Get list of students enrolled in a semester."""
-        result = await self._api_get(f"/api/formsemestre/{formsemestre_id}/etudiants")
+    async def get_formsemestre_partitions(self, formsemestre_id: int) -> list[dict]:
+        """Get partitions (group categories) for a semester."""
+        result = await self._api_get(f"/api/formsemestre/{formsemestre_id}/partitions", tolerate_404=True)
         return result if result else []
+    
+    async def get_available_parcours(self, formsemestre_id: int) -> list[str]:
+        """Get available parcours for a semester directly from partitions.
+        
+        This is more efficient than iterating through all students.
+        Parcours are stored as groups in a "Parcours" partition.
+        """
+        partitions = await self.get_formsemestre_partitions(formsemestre_id)
+        parcours_list: list[str] = []
+        
+        logger.info(f"get_available_parcours: formsemestre_id={formsemestre_id}, partitions type={type(partitions)}")
+        
+        # Handle both dict (new API) and list (old API) formats
+        if isinstance(partitions, dict):
+            # New API: partitions is a dict with partition_id as keys
+            for partition_id, partition in partitions.items():
+                if not isinstance(partition, dict):
+                    continue
+                
+                partition_name = partition.get("partition_name") or partition.get("name") or partition.get("nom") or ""
+                logger.debug(f"  Partition: {partition_name}")
+                
+                if "parcours" in partition_name.lower():
+                    groups = partition.get("groups") or partition.get("groupes") or {}
+                    logger.info(f"  Found parcours partition '{partition_name}' with groups: {groups}")
+                    
+                    # Groups can be a dict (id -> group_data) or a list
+                    if isinstance(groups, dict):
+                        for group_id, group in groups.items():
+                            if isinstance(group, dict):
+                                group_name = group.get("group_name") or group.get("name") or group.get("nom")
+                                if group_name:
+                                    parcours_list.append(group_name)
+                                    logger.debug(f"    Group: {group_name}")
+                    elif isinstance(groups, list):
+                        for group in groups:
+                            if isinstance(group, dict):
+                                group_name = group.get("group_name") or group.get("name") or group.get("nom")
+                                if group_name:
+                                    parcours_list.append(group_name)
+                            elif isinstance(group, str):
+                                parcours_list.append(group)
+        elif isinstance(partitions, list):
+            # Old API: partitions is a list of partition objects
+            for partition in partitions:
+                if not isinstance(partition, dict):
+                    continue
+                
+                partition_name = partition.get("partition_name") or partition.get("name") or partition.get("nom") or ""
+                
+                if "parcours" in partition_name.lower():
+                    groups = partition.get("groups") or partition.get("groupes") or []
+                    for group in groups:
+                        if isinstance(group, dict):
+                            group_name = group.get("group_name") or group.get("name") or group.get("nom")
+                            if group_name:
+                                parcours_list.append(group_name)
+                        elif isinstance(group, str):
+                            parcours_list.append(group)
+        
+        if not parcours_list:
+            logger.warning(f"No parcours found for formsemestre {formsemestre_id}")
+        else:
+            logger.info(f"Found parcours for formsemestre {formsemestre_id}: {parcours_list}")
+        
+        return sorted(set(parcours_list))
     
     async def get_department_etudiants(self) -> list[dict]:
         """Get all students in department."""
         result = await self._api_get(f"/api/departement/{self.department}/etudiants")
         return result if result else []
+
+    async def get_referentiel_competences(self, formation_id: Optional[int] = None) -> Optional[Any]:
+        """Récupère le référentiel APC (compétences) depuis ScoDoc.
+        
+        The correct endpoint is /api/formation/{formation_id}/referentiel_competences.
+        If formation_id is not provided, we try to get it from current semesters.
+        """
+        # If no formation_id, try to get one from current semesters
+        if not formation_id:
+            semesters = await self.get_formsemestres_courants()
+            for sem in semesters:
+                fid = sem.get("formation_id") or (sem.get("formation", {}) or {}).get("id")
+                if fid:
+                    formation_id = int(fid)
+                    break
+        
+        if formation_id:
+            data = await self._api_get(f"/api/formation/{formation_id}/referentiel_competences", tolerate_404=True)
+            if data:
+                return data
+        
+        # Fallback: try department-scoped (some ScoDoc versions)
+        endpoints = [
+            f"/api/departement/{self.department}/referentiel_competences",
+            "/api/referentiel_competences",
+        ]
+        for endpoint in endpoints:
+            data = await self._api_get(endpoint, tolerate_404=True)
+            if data:
+                return data
+        return None
+
+    async def get_formsemestres_etudiant(self, etudiant_id: str) -> list[dict]:
+        """Liste des formsemestres d'un étudiant (historique)."""
+        if not etudiant_id or not str(etudiant_id).strip():
+            return []
+        endpoints = [
+            f"/api/etudiant/etudid/{etudiant_id}/formsemestres",
+            f"/api/etudiant/{etudiant_id}/formsemestres",
+        ]
+        for endpoint in endpoints:
+            result = await self._api_get(endpoint, tolerate_404=True)
+            if result:
+                return result if isinstance(result, list) else []
+        return []
+
+    async def get_bulletin_etudiant(self, etudiant_id: str, formsemestre_id: int) -> Optional[dict]:
+        """Bulletin d'un étudiant pour un formsemestre."""
+        if not etudiant_id or not str(etudiant_id).strip():
+            return None
+        endpoints = [
+            f"/api/etudiant/etudid/{etudiant_id}/formsemestre/{formsemestre_id}/bulletin",
+            f"/api/etudiant/{etudiant_id}/formsemestre/{formsemestre_id}/bulletin",
+        ]
+        for endpoint in endpoints:
+            result = await self._api_get(endpoint, tolerate_404=True)
+            if result:
+                return result if isinstance(result, dict) else None
+        return None
     
     async def fetch_raw(self, **kwargs) -> dict[str, Any]:
         """Fetch all scolarité data from ScoDoc."""
@@ -636,6 +814,36 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
             evolution_effectifs={},  # Would need historical data
         )
     
+    async def get_etudiant_groups(self, etudiant_id: str, formsemestre_id: int) -> list[dict]:
+        """Get groups an student belongs to in a semester."""
+        result = await self._api_get(
+            f"/api/etudiant/etudid/{etudiant_id}/formsemestre/{formsemestre_id}/groups",
+            tolerate_404=True
+        )
+        return result if result else []
+    
+    async def get_etudiant_parcours(self, etudiant_id: str, formsemestre_id: int) -> Optional[str]:
+        """Extract student's parcours from their groups.
+        
+        In ScoDoc, parcours are typically managed through partitions named "Parcours"
+        with group names being the parcours names (e.g., "Cybersécurité", "DevCloud").
+        """
+        groups = await self.get_etudiant_groups(etudiant_id, formsemestre_id)
+        if not groups:
+            return None
+        
+        # Look for a group from a "Parcours" partition
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            
+            partition_name = group.get("partition_name") or group.get("partition") or ""
+            # Parcours partitions are typically named "Parcours", "parcours", or similar
+            if "parcours" in partition_name.lower():
+                return group.get("group_name") or group.get("nom") or group.get("name")
+        
+        return None
+    
     async def get_etudiants(self, department: Optional[str] = None) -> list[Etudiant]:
         """Get list of students."""
         if not await self.authenticate():
@@ -647,18 +855,50 @@ class ScoDocAdapter(BaseAdapter[ScolariteIndicators]):
         if not raw_etudiants:
             return []
         
-        return [
-            Etudiant(
-                id=str(e.get("etudid", "")),
-                nom=e.get("nom", ""),
-                prenom=e.get("prenom", ""),
-                email=e.get("email"),
-                formation=e.get("formation_acronyme", ""),
-                semestre=f"S{e.get('semestre_id', '?')}" if e.get("semestre_id") else "",
-                groupe=e.get("groupes", [{}])[0].get("group_name") if e.get("groupes") else None,
+        etudiants: list[Etudiant] = []
+        for e in raw_etudiants:
+            if not isinstance(e, dict):
+                continue
+
+            raw_id = e.get("etudid") or e.get("id") or e.get("etud_id")
+            if isinstance(raw_id, dict):
+                raw_id = raw_id.get("value") or raw_id.get("id") or raw_id.get("etudid")
+            etudid = str(raw_id).strip() if raw_id is not None else ""
+            if not etudid:
+                continue
+
+            groupes = e.get("groupes")
+            groupe = None
+            if isinstance(groupes, list) and groupes:
+                first = groupes[0]
+                if isinstance(first, dict):
+                    groupe = first.get("group_name") or first.get("nom") or first.get("name")
+
+            sem_id = e.get("semestre_id")
+            semestre = f"S{sem_id}" if sem_id else ""
+
+            raw_nom = (
+                e.get("nom")
+                or e.get("nom_disp")
+                or e.get("nom_short")
+                or e.get("nom_usuel")
+                or e.get("nom_famille")
             )
-            for e in raw_etudiants
-        ]
+            raw_prenom = e.get("prenom") or e.get("prenom_usuel") or e.get("prenom1")
+
+            etudiants.append(
+                Etudiant(
+                    id=etudid,
+                    nom=str(raw_nom or "").strip(),
+                    prenom=str(raw_prenom or "").strip(),
+                    email=e.get("email"),
+                    formation=str(e.get("formation_acronyme") or e.get("formation") or ""),
+                    semestre=semestre,
+                    groupe=groupe,
+                )
+            )
+
+        return etudiants
     
     async def health_check(self) -> bool:
         """Check if ScoDoc API is reachable and authenticated."""

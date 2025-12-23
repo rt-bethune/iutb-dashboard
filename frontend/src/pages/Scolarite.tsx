@@ -11,7 +11,8 @@ import {
   Users,
   TrendingDown,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  CheckCircle
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -20,6 +21,8 @@ import {
 } from 'recharts'
 import StatCard from '@/components/StatCard'
 import ChartContainer from '@/components/ChartContainer'
+import CompetencyRadar from '@/components/CompetencyRadar'
+import CompetencyTable from '@/components/CompetencyTable'
 import ProgressBar from '@/components/ProgressBar'
 import FilterBar, { FilterConfig, FilterValues, YearSelector, PeriodSelector } from '@/components/FilterBar'
 import PermissionGate from '@/components/PermissionGate'
@@ -84,22 +87,21 @@ interface AnalyseTypeBac {
 export default function Scolarite() {
   const { department } = useDepartment()
   const [searchParams, setSearchParams] = useSearchParams()
-  const initialTab = searchParams.get('active') === 'indicators' || searchParams.get('tab') === 'indicators'
-    ? 'indicators'
-    : 'overview'
-  const [activeTab, setActiveTab] = useState<'overview' | 'indicators'>(initialTab)
+  type ScolariteTab = 'overview' | 'indicators' | 'competences'
+  const tabParam = searchParams.get('tab') || searchParams.get('active')
+  const initialTab: ScolariteTab =
+    tabParam === 'indicators' || tabParam === 'competences' ? (tabParam as ScolariteTab) : 'overview'
+  const [activeTab, setActiveTab] = useState<ScolariteTab>(initialTab)
 
   // Sync activeTab with URL params
   useEffect(() => {
-    const tabParam = searchParams.get('active') || searchParams.get('tab')
-    if (tabParam === 'indicators' && activeTab !== 'indicators') {
-      setActiveTab('indicators')
-    } else if (tabParam === 'overview' && activeTab !== 'overview') {
-      setActiveTab('overview')
+    const tab = searchParams.get('tab') || searchParams.get('active')
+    if (tab === 'overview' || tab === 'indicators' || tab === 'competences') {
+      if (tab !== activeTab) setActiveTab(tab)
     }
-  }, [searchParams])
+  }, [searchParams, activeTab])
 
-  const handleTabChange = (tab: 'overview' | 'indicators') => {
+  const handleTabChange = (tab: ScolariteTab) => {
     setActiveTab(tab)
     setSearchParams(prev => {
       prev.set('tab', tab)
@@ -118,6 +120,9 @@ export default function Scolarite() {
   })
   const [year, setYear] = useState<string>('')
   const [period, setPeriod] = useState<string>('all')
+  const [competencesNiveau, setCompetencesNiveau] = useState<number | undefined>(undefined)
+  const [competencesParcours, setCompetencesParcours] = useState<string | undefined>(undefined)
+  const [selectedEtudiantId, setSelectedEtudiantId] = useState<string | null>(null)
 
   const { data: indicators, isLoading, error } = useQuery({
     queryKey: ['scolarite', 'indicators', department, year],
@@ -125,6 +130,13 @@ export default function Scolarite() {
     enabled: activeTab === 'overview',
   })
   const semestresStats = indicators?.semestres_stats ?? []
+
+  // Fetch APC validation stats for overview (all students)
+  const { data: overviewCompetencesStats } = useQuery({
+    queryKey: ['scolarite', 'competences', 'stats', department, 'overview'],
+    queryFn: () => scolariteApi.getCompetencesStats(department, {}),
+    enabled: activeTab === 'overview',
+  })
 
   const { data: effectifs } = useQuery({
     queryKey: ['scolarite', 'effectifs', department],
@@ -158,6 +170,36 @@ export default function Scolarite() {
     queryFn: () => api.get<AnalyseTypeBac>(`/${department}/indicateurs/analyse-type-bac`, { params: cohortParams }).then(res => res.data),
     enabled: activeTab === 'indicators',
   })
+
+  // Fetch available parcours separately (fast endpoint)
+  const { data: parcoursDisponibles, isLoading: parcoursLoading } = useQuery({
+    queryKey: ['scolarite', 'competences', 'parcours', department, competencesNiveau],
+    queryFn: () => scolariteApi.getCompetencesParcours(department, competencesNiveau),
+    enabled: activeTab === 'competences',
+    staleTime: 5 * 60 * 1000, // 5 minutes - parcours don't change often
+  })
+
+  const { data: competencesStats, isLoading: competencesStatsLoading, error: competencesStatsError } = useQuery({
+    queryKey: ['scolarite', 'competences', 'stats', department, competencesNiveau, competencesParcours],
+    queryFn: () => scolariteApi.getCompetencesStats(department, { niveau: competencesNiveau, parcours: competencesParcours }),
+    enabled: activeTab === 'competences',
+  })
+
+  const { data: competencesEtudiants, isLoading: competencesEtudiantsLoading, error: competencesEtudiantsError } = useQuery({
+    queryKey: ['scolarite', 'competences', 'etudiants', department, competencesNiveau, competencesParcours],
+    queryFn: () => scolariteApi.getCompetencesEtudiants(department, { niveau: competencesNiveau, parcours: competencesParcours }),
+    enabled: activeTab === 'competences',
+  })
+
+  const { data: selectedEtudiantCompetences, isLoading: selectedEtudiantCompetencesLoading, error: selectedEtudiantCompetencesError } = useQuery({
+    queryKey: ['scolarite', 'competences', 'etudiant', department, selectedEtudiantId, competencesNiveau],
+    queryFn: () => scolariteApi.getEtudiantCompetences(department, selectedEtudiantId!, competencesNiveau),
+    enabled: activeTab === 'competences' && !!selectedEtudiantId,
+  })
+
+  useEffect(() => {
+    setSelectedEtudiantId(null)
+  }, [competencesNiveau, competencesParcours])
 
   const formationOptions = useMemo(
     () =>
@@ -261,6 +303,22 @@ export default function Scolarite() {
     return (
       <div className="flex items-center justify-center h-64 text-red-500">
         Erreur lors du chargement des données
+      </div>
+    )
+  }
+
+  if (activeTab === 'competences' && (competencesStatsError || competencesEtudiantsError || selectedEtudiantCompetencesError)) {
+    const axiosError = (competencesStatsError || competencesEtudiantsError || selectedEtudiantCompetencesError) as any
+    if (axiosError?.response?.status === 403) {
+      return (
+        <PermissionGate domain="scolarite" action="view">
+          <div />
+        </PermissionGate>
+      )
+    }
+    return (
+      <div className="flex items-center justify-center h-64 text-red-500">
+        Erreur lors du chargement des compétences
       </div>
     )
   }
@@ -386,18 +444,25 @@ export default function Scolarite() {
           <h1 className="text-2xl font-bold text-gray-900">Scolarité</h1>
           <div className="flex items-center gap-6 mt-2">
             <button
-              onClick={() => setActiveTab('overview')}
+              onClick={() => handleTabChange('overview')}
               className={`pb-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
             >
               Vue d'ensemble
             </button>
             <button
-              onClick={() => setActiveTab('indicators')}
+              onClick={() => handleTabChange('indicators')}
               className={`pb-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'indicators' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
             >
               Indicateurs de cohorte
+            </button>
+            <button
+              onClick={() => handleTabChange('competences')}
+              className={`pb-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'competences' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+            >
+              Compétences
             </button>
           </div>
         </div>
@@ -413,10 +478,17 @@ export default function Scolarite() {
       {activeTab === 'overview' ? (
         <>
           {/* Stats overview */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <StatCard title="Total étudiants" value={indicators?.total_etudiants ?? 0} icon={<GraduationCap className="w-6 h-6" />} color="blue" />
             <StatCard title="Moyenne générale" value={indicators?.moyenne_generale.toFixed(2) ?? '-'} icon={<TrendingUp className="w-6 h-6" />} color="green" />
-            <StatCard title="Taux de réussite" value={`${(indicators?.taux_reussite_global ?? 0).toFixed(1)}%`} color="blue" />
+            <StatCard title="Taux de réussite" value={`${(indicators?.taux_reussite_global ?? 0).toFixed(1)}%`} color="blue" subtitle="Notes ≥ 10/20" />
+            <StatCard
+              title="Validation APC"
+              value={`${toPercent(overviewCompetencesStats?.taux_validation_global ?? 0).toFixed(0)}%`}
+              icon={<CheckCircle className="w-6 h-6" />}
+              color="green"
+              subtitle=">50% compétences"
+            />
             <StatCard title="Taux d'absentéisme" value={`${(indicators?.taux_absenteisme ?? 0).toFixed(1)}%`} icon={<AlertCircle className="w-6 h-6" />} color="yellow" />
           </div>
 
@@ -502,7 +574,7 @@ export default function Scolarite() {
             </ResponsiveContainer>
           </ChartContainer>
         </>
-      ) : (
+      ) : activeTab === 'indicators' ? (
         <>
           {/* Indicators Tab Content */}
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -564,6 +636,229 @@ export default function Scolarite() {
                   )
                 })}
               </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          {/* Competences Tab Content */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Niveau</span>
+                <select
+                  value={competencesNiveau ?? ''}
+                  onChange={(e) => setCompetencesNiveau(e.target.value ? Number(e.target.value) : undefined)}
+                  className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+                >
+                  <option value="">Dernier niveau</option>
+                  <option value="1">BUT 1</option>
+                  <option value="2">BUT 2</option>
+                  <option value="3">BUT 3</option>
+                </select>
+              </div>
+              {/* Parcours dropdown - show loading state or dropdown */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Parcours</span>
+                {parcoursLoading ? (
+                  <span className="text-xs text-gray-400 animate-pulse">Chargement...</span>
+                ) : parcoursDisponibles && parcoursDisponibles.length > 0 ? (
+                  <select
+                    value={competencesParcours ?? ''}
+                    onChange={(e) => setCompetencesParcours(e.target.value || undefined)}
+                    className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+                  >
+                    <option value="">Tous les parcours</option>
+                    {parcoursDisponibles.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-xs text-gray-400">Aucun parcours</span>
+                )}
+              </div>
+            </div>
+            <div className="text-xs text-gray-500">
+              {competencesStats?.total_etudiants ?? 0} étudiant(s) analysé(s)
+              {competencesParcours && ` (parcours: ${competencesParcours})`}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard
+              title="Étudiants"
+              value={competencesStats?.total_etudiants ?? 0}
+              icon={<Users className="h-6 w-6" />}
+              loading={competencesStatsLoading}
+            />
+            <StatCard
+              title="Validation globale"
+              value={`${toPercent(competencesStats?.taux_validation_global ?? 0).toFixed(0)}%`}
+              icon={<FileText className="h-6 w-6" />}
+              loading={competencesStatsLoading}
+            />
+            <StatCard
+              title="Niveau"
+              value={competencesNiveau ? `BUT ${competencesNiveau}` : 'Dernier'}
+              icon={<BarChart3 className="h-6 w-6" />}
+              loading={false}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ChartContainer title="Radar des UEs" loading={competencesStatsLoading}>
+              <CompetencyRadar
+                data={
+                  competencesStats?.par_ue
+                    ? Object.entries(competencesStats.par_ue)
+                      .map(([competence, taux]) => ({
+                        competence,
+                        taux: typeof taux === 'number' ? taux : 0,
+                      }))
+                      .sort((a, b) => a.competence.localeCompare(b.competence))
+                    : []
+                }
+              />
+            </ChartContainer>
+
+            <div className="card">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Détails par UE</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="text-left text-gray-600 border-b">
+                    <tr>
+                      <th className="py-2 pr-4 font-medium">UE</th>
+                      <th className="py-2 pr-4 font-medium">Taux validé</th>
+                      <th className="py-2 pr-0 font-medium">Moyenne</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {competencesStats?.par_ue
+                      ? Object.keys(competencesStats.par_ue)
+                        .sort((a, b) => a.localeCompare(b))
+                        .map((key) => (
+                          <tr key={key}>
+                            <td className="py-2 pr-4 font-medium">{key}</td>
+                            <td className="py-2 pr-4">
+                              {toPercent(competencesStats.par_ue[key]).toFixed(0)}%
+                            </td>
+                            <td className="py-2 pr-0">
+                              {competencesStats.moyenne_par_ue?.[key] !== undefined
+                                ? competencesStats.moyenne_par_ue[key].toFixed(2)
+                                : '—'}
+                            </td>
+                          </tr>
+                        ))
+                      : null}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Étudiants</h3>
+            {competencesEtudiantsLoading ? (
+              <div className="text-sm text-gray-500">Chargement…</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="text-left text-gray-600 border-b">
+                    <tr>
+                      <th className="py-2 pr-4 font-medium">Étudiant</th>
+                      <th className="py-2 pr-4 font-medium">Parcours</th>
+                      <th className="py-2 pr-4 font-medium">Validation</th>
+                      <th className="py-2 pr-4 font-medium">UEs</th>
+                      <th className="py-2 pr-0 font-medium">Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {(competencesEtudiants || [])
+                      .filter((e: any) => {
+                        const search = (filters.search as string) || ''
+                        const searchNorm = search ? normalizeText(search) : ''
+                        if (searchNorm) {
+                          const name1 = normalizeText(`${e.nom || ''} ${e.prenom || ''}`)
+                          const name2 = normalizeText(`${e.prenom || ''} ${e.nom || ''}`)
+                          if (!name1.includes(searchNorm) && !name2.includes(searchNorm)) return false
+                        }
+
+                        if (selectedFormations.length > 0) {
+                          const formation = normalizeText(e.formation || '')
+                          const match = selectedFormations.some((sel) => formation.includes(normalizeText(sel)))
+                          if (!match) return false
+                        }
+
+                        if (selectedSemestres.length > 0) {
+                          if (!selectedSemestres.includes(e.semestre)) return false
+                        }
+
+                        return true
+                      })
+                      .map((e: any) => {
+                        const isSelected = selectedEtudiantId === e.etudiant_id
+                        return (
+                          <tr
+                            key={e.etudiant_id}
+                            onClick={() => setSelectedEtudiantId(e.etudiant_id)}
+                            className={`cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-blue-50' : ''}`}
+                          >
+                            <td className="py-2 pr-4">
+                              <div className="font-medium text-gray-900">
+                                {[e.nom, e.prenom].filter(Boolean).join(' ') || e.etudiant_id}
+                              </div>
+                              <div className="text-xs text-gray-500">{e.formation || '—'} • {e.semestre || '—'}</div>
+                            </td>
+                            <td className="py-2 pr-4">
+                              {e.parcours ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                                  {e.parcours}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-4">{toPercent(e.taux_validation).toFixed(0)}%</td>
+                            <td className="py-2 pr-4">
+                              {e.nb_ues_validees ?? e.nb_competences_validees ?? 0}/{e.nb_ues ?? e.nb_competences ?? 0}
+                            </td>
+                            <td className="py-2 pr-0">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${e.valide ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                  }`}
+                              >
+                                {e.valide ? 'Admis' : 'Non admis'}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {selectedEtudiantId && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Détail étudiant{selectedEtudiantCompetences ? ` — ${[selectedEtudiantCompetences.nom, selectedEtudiantCompetences.prenom].filter(Boolean).join(' ')}` : ''}
+                </h3>
+                <button
+                  onClick={() => setSelectedEtudiantId(null)}
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Fermer
+                </button>
+              </div>
+              {selectedEtudiantCompetencesLoading ? (
+                <div className="text-sm text-gray-500">Chargement…</div>
+              ) : selectedEtudiantCompetences ? (
+                <CompetencyTable validations={selectedEtudiantCompetences.ue_validations || selectedEtudiantCompetences.rcue_validations || []} />
+              ) : (
+                <div className="text-sm text-gray-500">Aucune donnée.</div>
+              )}
             </div>
           )}
         </>

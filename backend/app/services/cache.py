@@ -281,10 +281,10 @@ class CacheKeys:
     INDICATEURS = "indicateurs"
     
     # TTL values (seconds)
-    TTL_SHORT = 300      # 5 minutes
-    TTL_MEDIUM = 1800    # 30 minutes
-    TTL_LONG = 3600      # 1 hour
-    TTL_STUDENT = 600    # 10 minutes for individual student data
+    TTL_SHORT = 3600  * 8    # 8 hours
+    TTL_MEDIUM = 24 * 3600    # 24 hours
+    TTL_LONG = 7 * 24 * 3600      # 7 days
+    TTL_STUDENT = TTL_SHORT    # 8 hours for individual student data
 
     @staticmethod
     def _key_part(value: Optional[str]) -> str:
@@ -522,6 +522,49 @@ class CacheKeys:
         if annee:
             return f"edt:{dept}:indicators:{annee}"
         return f"edt:{dept}:indicators:current"
+    
+    # ========== APC / Compétences ==========
+    
+    @staticmethod
+    def competences_parcours(
+        department: str,
+        niveau: Optional[int] = None,
+    ) -> str:
+        """Cache key for available parcours list."""
+        n = CacheKeys._key_part(str(niveau) if niveau else None)
+        return f"competences:{department}:parcours:{n}"
+    
+    @staticmethod
+    def competences_stats(
+        department: str,
+        niveau: Optional[int] = None,
+        parcours: Optional[str] = None,
+    ) -> str:
+        """Cache key for competences stats (aggregated APC data)."""
+        n = CacheKeys._key_part(str(niveau) if niveau else None)
+        p = CacheKeys._key_part(parcours)
+        return f"competences:{department}:stats:{n}:{p}"
+    
+    @staticmethod
+    def competences_etudiants(
+        department: str,
+        niveau: Optional[int] = None,
+        parcours: Optional[str] = None,
+    ) -> str:
+        """Cache key for competences etudiants list."""
+        n = CacheKeys._key_part(str(niveau) if niveau else None)
+        p = CacheKeys._key_part(parcours)
+        return f"competences:{department}:etudiants:{n}:{p}"
+    
+    @staticmethod
+    def competence_etudiant(
+        department: str,
+        etudiant_id: str,
+        niveau: Optional[int] = None,
+    ) -> str:
+        """Cache key for a single student's competences."""
+        n = CacheKeys._key_part(str(niveau) if niveau else None)
+        return f"competences:{department}:etudiant:{etudiant_id}:{n}"
     
     @staticmethod
     def last_refresh(domain: str, department: Optional[str] = None) -> str:

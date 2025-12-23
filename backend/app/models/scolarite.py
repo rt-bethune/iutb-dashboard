@@ -64,7 +64,8 @@ class ScolariteIndicators(BaseModel):
     etudiants_par_formation: dict[str, int]
     etudiants_par_semestre: dict[str, int]
     moyenne_generale: float
-    taux_reussite_global: float
+    taux_reussite_global: float  # Traditional: % of grades >= 10/20
+    taux_validation_apc: Optional[float] = None  # APC/BUT: % of students with >50% competencies validated
     taux_absenteisme: float
     modules_stats: list[ModuleStats]
     semestres_stats: list[SemestreStats]

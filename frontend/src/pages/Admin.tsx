@@ -395,7 +395,7 @@ function CacheTab({
   onWarmup: (department?: string) => void
   isWarming: boolean
 }) {
-  const domains = ['scolarite', 'recrutement', 'budget', 'edt']
+  const domains = ['scolarite', 'recrutement', 'budget', 'edt', 'competences', 'alertes', 'indicateurs']
   const departments = ['RT', 'GEII', 'GCCD', 'GMP', 'QLIO', 'CHIMIE']
 
   return (

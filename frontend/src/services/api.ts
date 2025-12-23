@@ -46,6 +46,17 @@ export const scolariteApi = {
     api.get(withDept('/scolarite/effectifs', department)).then(res => res.data),
   getReussite: (department: string) => 
     api.get(withDept('/scolarite/reussite', department)).then(res => res.data),
+  // APC (compétences)
+  getCompetences: (department: string) =>
+    api.get(withDept('/scolarite/competences', department)).then(res => res.data),
+  getCompetencesParcours: (department: string, niveau?: number) =>
+    api.get<string[]>(withDept('/scolarite/competences/parcours', department), { params: { niveau } }).then(res => res.data),
+  getCompetencesEtudiants: (department: string, params?: { niveau?: number; parcours?: string; refresh?: boolean }) =>
+    api.get(withDept('/scolarite/competences/etudiants', department), { params }).then(res => res.data),
+  getEtudiantCompetences: (department: string, etudiantId: string, niveau?: number, refresh?: boolean) =>
+    api.get(withDept(`/scolarite/etudiants/${etudiantId}/competences`, department), { params: { niveau, refresh } }).then(res => res.data),
+  getCompetencesStats: (department: string, params?: { niveau?: number; parcours?: string; refresh?: boolean }) =>
+    api.get(withDept('/scolarite/competences/stats', department), { params }).then(res => res.data),
 }
 
 // Alertes étudiants
